@@ -1,3 +1,4 @@
+from urllib.parse import urljoin
 from datetime import datetime, timezone
 from urllib.request import urlopen
 
@@ -22,7 +23,45 @@ class InfobrasScraper:
             html = response.read().decode("utf-8-sig")
 
         return self.parsear_html(html, url, codigo)
+    
+    def listar_documentos(self, codigo: str) -> list[dict[str, str]]:
+        if not codigo.isdigit():
+            raise ValueError("El código INFOBRAS debe ser numérico.")
 
+        url = f"{self.BASE_URL}?ObraId={codigo}"
+
+        with urlopen(url, timeout=30) as response:
+            html = response.read().decode("utf-8-sig")
+
+        # Comprueba que recibimos la ficha esperada.
+        self.parsear_html(html, url, codigo)
+
+        soup = BeautifulSoup(html, "html.parser")
+        documentos = []
+        enlaces_vistos = set()
+
+        for elemento in soup.select("[data-download-url]"):
+            enlace = elemento.get("data-download-url", "").strip()
+
+            if not enlace:
+                continue
+
+            enlace = urljoin(url, enlace)
+
+            if enlace in enlaces_vistos:
+                continue
+
+            enlaces_vistos.add(enlace)
+
+            documentos.append({
+                "nombre": elemento.get("data-nombre") or "Sin nombre",
+                "extension": elemento.get("data-extension") or "",
+                "url_descarga": enlace,
+                "url_ficha": url,
+            })
+
+        return documentos
+    
     def parsear_html(
         self,
         html: str,
