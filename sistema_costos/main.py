@@ -6,7 +6,7 @@ import logging
 
 from .config.settings import configure_logging, get_settings
 from .database.connection import initialize_database
-from .ui.app import CostApp
+from .ui.references_app import ReferencesApp
 
 
 def main() -> None:
@@ -15,7 +15,7 @@ def main() -> None:
     logger = logging.getLogger(__name__)
     initialize_database(settings.database_path, settings.schema_path)
     logger.info("Aplicacion iniciada", extra={"structured": {"database": str(settings.database_path)}})
-    application = CostApp(settings)
+    application = ReferencesApp(settings)
     application.mainloop()
 
 

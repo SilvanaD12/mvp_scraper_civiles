@@ -1,5 +1,13 @@
 """Interfaz grafica de escritorio."""
 
-from .app import CostApp
+__all__ = ["CostApp", "ReferencesApp"]
 
-__all__ = ["CostApp"]
+
+def __getattr__(name):
+    if name == 'CostApp':
+        from .app import CostApp
+        return CostApp
+    if name == 'ReferencesApp':
+        from .references_app import ReferencesApp
+        return ReferencesApp
+    raise AttributeError(name)

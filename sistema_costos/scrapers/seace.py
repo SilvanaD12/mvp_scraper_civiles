@@ -1,5 +1,14 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
+
+def public_download_url(url: str) -> str:
+    """Conserva la ruta de procedencia sin credenciales temporales del portal."""
+    parts = urlsplit(url)
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True)
+             if key.lower() not in ('alf_ticket', 'token', 'access_token')]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ''))
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import (
@@ -17,6 +26,9 @@ class SeaceScraper:
     FORM = "tbBuscador:idFormBuscarProceso"
     TABLA = f"{FORM}:dtProcesos"
 
+    def __init__(self, headless: bool = False):
+        self.headless = headless
+
     def buscar(
         self,
         termino: str,
@@ -24,6 +36,8 @@ class SeaceScraper:
         nomenclatura: str | None = None,
         numero_documento: int | None = None,
         carpeta_destino: Path | None = None,
+        procedimiento_esperado: dict | None = None,
+        documento_esperado: dict | None = None,
     ) -> dict:
         termino = termino.strip()
 
@@ -55,7 +69,7 @@ class SeaceScraper:
                 )
 
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=False)
+            browser = playwright.chromium.launch(headless=self.headless)
 
             try:
                 page = browser.new_page(accept_downloads=True)
@@ -108,7 +122,7 @@ class SeaceScraper:
                         "termino": termino,
                         "anio": anio,
                         "url_busqueda": self.URL,
-                        **self._leer_ficha(page, nomenclatura),
+                        **self._leer_ficha(page, nomenclatura, procedimiento_esperado),
                     }
 
                     if numero_documento is not None:
@@ -118,6 +132,7 @@ class SeaceScraper:
                                 documentos=resultado["documentos"],
                                 numero=numero_documento,
                                 carpeta=Path(carpeta_destino),
+                                esperado=documento_esperado,
                             )
                         )
 
@@ -147,6 +162,7 @@ class SeaceScraper:
         self,
         page: Page,
         nomenclatura: str,
+        esperado: dict | None = None,
     ) -> dict:
         filas = page.locator(
             f'[id="{self.TABLA}_data"] > tr'
@@ -172,6 +188,13 @@ class SeaceScraper:
                 "Hay varias filas con esa nomenclatura. "
                 "Debemos diferenciarlas antes de abrir la ficha."
             )
+
+        if esperado is not None:
+            html = '<table><tbody><tr>' + coincidencias.inner_html() + '</tr></tbody></table>'
+            actual = self.parsear_tabla(html)['registros'][0]
+            keys = ('nomenclatura', 'entidad', 'publicado_en', 'descripcion', 'objeto_contratacion', 'cui_texto')
+            if any(actual.get(key) != esperado.get(key) for key in keys):
+                raise ValueError('El resultado cambió desde la búsqueda. Busque de nuevo antes de abrir la ficha.')
 
         # Abre la ficha de la fila seleccionada.
         coincidencias.locator(
@@ -255,6 +278,7 @@ class SeaceScraper:
         documentos: list[dict[str, str]],
         numero: int,
         carpeta: Path,
+        esperado: dict | None = None,
     ) -> dict:
         coincidencias = [
             documento
@@ -269,6 +293,10 @@ class SeaceScraper:
             )
 
         documento = coincidencias[0]
+        if esperado is not None:
+            keys = ('numero', 'etapa', 'documento', 'publicado_en', 'archivo_texto')
+            if any(documento.get(key) != esperado.get(key) for key in keys):
+                raise ValueError('El listado de documentos cambió. Abra la ficha otra vez antes de descargar.')
         control_id = documento["control_descarga_id"]
 
         with page.expect_download(timeout=60_000) as evento:
@@ -367,7 +395,7 @@ class SeaceScraper:
             "numero": documento["numero"],
             "publicado_en": documento["publicado_en"],
             "nombre_original": descarga.suggested_filename,
-            "url_descarga": descarga.url,
+            "url_descarga": public_download_url(descarga.url),
             "ruta_local": str(destino.resolve()),
             "extension": extension,
             "tamanio_bytes": tamanio,

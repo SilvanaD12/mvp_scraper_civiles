@@ -10,3 +10,6 @@ logs/
 build/
 dist/
 *.spec
+.browsers/
+datos_locales/
+tmp/

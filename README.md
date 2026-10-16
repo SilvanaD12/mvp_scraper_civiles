@@ -1,78 +1,87 @@
-# Sistema Escalable de Web Scraping para Costos Civiles
+# CENITEG · Referencias de obras civiles
 
-MVP local de Ceniteg Solutions para extraer precios de proveedores de materiales, normalizar unidades de obra, consolidar estadistica descriptiva y exportar reportes `.xlsx`.
+Aplicación de escritorio para buscar obras en INFOBRAS y procedimientos en SEACE,
+consultar documentos y guardar evidencia para el análisis de costos.
 
-## Alcance de la Fase 1
+## Avance del 16 de octubre de 2026
 
-- SQLite local con Foreign Keys, indices y un modelo normalizado en 3FN.
-- Scrapers desacoplados mediante una interfaz ABC con reintentos y logging.
-- Implementacion inicial de Sodimac con Playwright para renderizado y BeautifulSoup4 para parseo.
-- ETL con pandas: limpieza de precios, normalizacion de unidades APU y consolidacion por producto/unidad.
-- Exportacion Excel con hojas `Precios`, `Consolidado` y `Resumen`.
-- GUI de escritorio en modo oscuro con customtkinter.
-- Estructura preparada para PyInstaller.
+- Pestañas INFOBRAS, SEACE y Guardados, integradas con los scrapers de Silvana.
+- Búsqueda por término/código en INFOBRAS y por término/año en SEACE.
+- Consulta de fichas, listado de documentos y descarga con procedencia y SHA-256.
+- Historial local: las fichas y descargas guardadas se pueden abrir sin Internet.
+- SQLite: procedimientos, documentos, consultas y versiones de descargas.
+- Red y navegador fuera del hilo de la interfaz; progreso y errores visibles.
+- Verificación del procedimiento y del documento antes de descargar.
 
-No se incluyen APIs web, servicios en la nube, tareas cron, scraping estatal avanzado ni Machine Learning.
+**SEACE consulta la primera página de resultados y documentos.**
+**Los montos mostrados son datos de las fuentes; aún no se calculan presupuestos.**
+El alcance del piloto requiere metrados, APUs y validación civil.
 
-## Estructura
+## Abrir en este equipo
 
-```text
-mvp_scraper_civiles/
-├── sistema_costos/
-│   ├── config/           # Rutas, parametros y logging estructurado
-│   ├── database/         # Conexion SQLite, esquema y repositorios
-│   ├── scrapers/         # Contrato base y bots por proveedor
-│   ├── services/         # ETL y exportacion Excel
-│   ├── ui/               # Ventana y componentes customtkinter
-│   └── main.py
-├── mapeo_selectores.md   # Selectores candidatos por proveedor
-├── main.py               # Launcher de desarrollo y PyInstaller
-├── requirements.txt
-└── README.md
-```
+Doble clic en `INICIAR_MVP.cmd` desde el Explorador. El entorno y el navegador
+están preparados en la copia de trabajo de Oscar.
+Ver `PRESENTACION_MVP.md` para el recorrido y los resultados comprobados.
 
-## Instalacion
+## Preparar otro equipo Windows
 
-Requiere Python 3.10 o superior.
+Python 3.10 o superior. Desde la raíz del repositorio:
 
 ```powershell
-cd mvp_scraper_civiles
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-playwright install chromium
+.\.venv\Scripts\python.exe -m pip install -r requirements-mvp.txt
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) '.browsers'
+.\.venv\Scripts\python.exe -m playwright install chromium
+.\INICIAR_MVP.cmd
 ```
 
-## Ejecucion
+El lanzador usa `datos_locales/` para SQLite, documentos y logs,
+y `.browsers/` para Chromium. Esas carpetas y `.venv/` se excluyen de Git.
+Los datos de una computadora no se transfieren con el código.
 
-Desde la raiz del repositorio:
+Los comandos de Silvana siguen disponibles. Sin `CENITEG_DATA_DIR`, usan la
+ubicación original `%USERPROFILE%\CenitegSolutions\costos_data`.
+Para compartir datos con la interfaz de este lanzador:
 
 ```powershell
-python -m sistema_costos.main
+$env:CENITEG_DATA_DIR = Join-Path (Get-Location) 'datos_locales'
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) '.browsers'
 ```
 
-Tambien se puede usar el launcher raiz:
+## Caso piloto y verificaciones
 
 ```powershell
-python main.py
+# Consultas reales y descargas públicas; guarda resultados para la interfaz.
+.\.venv\Scripts\python.exe -m scripts.preparar_caso_piloto --fuente ambas --descargar --bases
+
+# Pruebas locales, sin acceso a portales.
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+
+# Ventana temporal; usa el historial real del caso piloto.
+.\.venv\Scripts\python.exe -m scripts.verificar_interfaz
 ```
 
-La primera ejecucion crea los datos en `%USERPROFILE%\CenitegSolutions\costos_data`, incluyendo `costos.db`, `exports/` y `logs/`. Para cambiar la ubicacion se puede definir `CENITEG_DATA_DIR`.
+El caso de captura usa INFOBRAS 507544 y SEACE
+`AS-SM-16-2023-OEC/PERPG-GRMOQ-1` (CAMPAMENTOS, 2023).
+La relación de alcance entre proyecto y servicio necesita revisión civil;
+no se deduce un precio por m² del monto global del servicio.
 
-La GUI solicita una URL de Sodimac. El extractor actual es un MVP y sus selectores deben mantenerse junto con los cambios del sitio proveedor.
+## Código
 
-## Empaquetado futuro
+- `sistema_costos/ui/references_app.py`: pantallas y cola de tareas de fondo.
+- `sistema_costos/services/references_service.py`: búsqueda, consulta y descarga.
+- `sistema_costos/database/references_repository.py`: historial y persistencia.
+- `sistema_costos/scrapers/`: conectores, con validación antes de descargar.
+- `tests/`: versiones, errores y selección de documentos.
 
-```powershell
-pyinstaller --noconfirm --windowed --name CenitegCostos `
-  --add-data "sistema_costos/database/schema.sql;database" `
-  main.py
-```
+Los módulos anteriores de Sodimac, ETL y exportación se conservan.
+`requirements.txt` incluye sus dependencias. La nueva interfaz usa
+`requirements-mvp.txt`, que requiere menos paquetes.
 
-## Siguientes incrementos sugeridos
+## Siguiente entrega
 
-1. Agregar adapters para Aceros Arequipa, CAPECO e INEI respetando `BaseScraper`.
-2. Incorporar pruebas unitarias de parseo, normalizacion y repositorios con una base temporal.
-3. Extraer selectores por proveedor a configuracion versionada y agregar control de cambios.
-4. Crear instalador Windows y politica de actualizacion local.
+1. Confirmar con el civil qué componente del campamento se va a estimar.
+2. Revisar términos de referencia y planos; identificar metrados y APUs.
+3. Extraer texto/OCR con documento y página y revisar los valores.
+4. Implementar y contrastar un presupuesto por partidas.
+5. Añadir paginación SEACE y ampliar referencias cuando el piloto esté estable.
