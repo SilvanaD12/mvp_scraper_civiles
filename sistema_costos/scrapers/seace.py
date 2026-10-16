@@ -54,7 +54,6 @@ class SeaceScraper:
                 ).click()
 
                 # Espera a que la consulta reemplace la tabla anterior.
-                # Así no confundimos el estado inicial vacío con un resultado.
                 page.wait_for_function(
                     "(anterior) => !anterior.isConnected",
                     arg=anterior,
@@ -128,3 +127,52 @@ class SeaceScraper:
             ),
             "registros": registros,
         }
+
+    @staticmethod
+    def parsear_documentos_html(
+        html: str,
+    ) -> list[dict[str, str]]:
+        soup = BeautifulSoup(html, "html.parser")
+
+        cuerpo = soup.find(
+            "tbody",
+            id="tbFicha:dtDocumentos_data",
+        )
+
+        if cuerpo is None:
+            raise ValueError(
+                "No se encontró la tabla de documentos SEACE."
+            )
+
+        documentos = []
+
+        for fila in cuerpo.find_all("tr", recursive=False):
+            if "ui-datatable-empty-message" in fila.get("class", []):
+                continue
+
+            celdas = fila.find_all("td", recursive=False)
+
+            if len(celdas) != 6:
+                raise ValueError(
+                    "La estructura de documentos SEACE cambió."
+                )
+
+            enlace = celdas[3].select_one(
+                'a[onclick*="descargaDocGeneral("]'
+            )
+
+            if enlace is None or not enlace.get("id"):
+                raise ValueError(
+                    "No se encontró el control de descarga."
+                )
+
+            documentos.append({
+                "numero": celdas[0].get_text(" ", strip=True),
+                "etapa": celdas[1].get_text(" ", strip=True),
+                "documento": celdas[2].get_text(" ", strip=True),
+                "archivo_texto": celdas[3].get_text(" ", strip=True),
+                "publicado_en": celdas[4].get_text(" ", strip=True),
+                "control_descarga_id": enlace["id"],
+            })
+
+        return documentos
