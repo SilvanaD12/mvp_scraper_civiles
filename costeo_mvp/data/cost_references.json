@@ -1,0 +1,67 @@
+[
+  {
+    "id": "multifamiliar-jan-2026",
+    "name": "Edificio multifamiliar de 3 pisos - COSTO enero 2026",
+    "description": "Edificio multifamiliar de tres pisos; área publicada de 420 m².",
+    "issue": "Enero 2026",
+    "validity": "31/12/2025",
+    "location": "Lima",
+    "unit_cost_per_m2": 1834.61,
+    "reference_area_m2": 420.0,
+    "published_total": 770536.20,
+    "source": "01.-SUPLEMENTO ENERO 2026.pdf",
+    "pages": "2-3",
+    "scope_note": "Costo directo; el suplemento excluye gastos generales, utilidad, impuestos y honorarios."
+  },
+  {
+    "id": "engineer-camp-jul-2026",
+    "name": "Campamento minero - módulo de ingenieros - COSTO julio 2026",
+    "description": "Módulo de campamento minero para ingenieros.",
+    "issue": "Julio 2026",
+    "validity": "30/06/2026",
+    "location": "Referencia publicada para Lima",
+    "unit_cost_per_m2": 713.01,
+    "reference_area_m2": null,
+    "published_total": null,
+    "source": "07.-SUMPLEMENTO JULIO 2026.pdf.pdf",
+    "pages": "2",
+    "scope_note": "Costo directo por m²; no incluye gastos generales, utilidad, impuestos ni honorarios."
+  },
+  {
+    "id": "workers-camp-apr-2026",
+    "name": "Campamento minero - módulo de obreros - COSTO abril 2026",
+    "description": "Módulo de campamento para obreros, 24 habitaciones para 96 personas.",
+    "issue": "Abril 2026",
+    "validity": "31/03/2026",
+    "location": "Lima",
+    "unit_cost_per_m2": 734.28,
+    "reference_area_m2": null,
+    "published_total": null,
+    "source": "04.-SUMPLEMENTO ABRIL 2026.pdf",
+    "pages": "2-4",
+    "scope_note": "Costo directo por m²; no incluye gastos generales, utilidad, impuestos ni honorarios."
+  },
+  {
+    "id": "sport-court-aug-2026",
+    "name": "Losa deportiva iluminada - COSTO agosto 2026",
+    "description": "Losa 30 x 18 m, 540 m², e=0.10 m, concreto f'c=140 kg/cm², afirmado e=3 pulgadas e iluminación.",
+    "issue": "Agosto 2026",
+    "validity": "31/07/2026",
+    "location": "Lima",
+    "unit_cost_per_m2": 220.87,
+    "reference_area_m2": 540.0,
+    "published_total": 119269.64,
+    "source": "08.-SUMPLEMENTO AGOSTO 2026.pdf",
+    "pages": "2-4",
+    "scope_note": "Costo directo; excluye gastos generales, utilidad, impuestos y honorarios.",
+    "breakdown": [
+      {"label": "Obras provisionales y preliminares", "amount": 7113.90},
+      {"label": "Movimiento de tierras", "amount": 16446.95},
+      {"label": "Obras de concreto", "amount": 46339.11},
+      {"label": "Estructuras metálicas", "amount": 12796.61},
+      {"label": "Pintura", "amount": 961.07},
+      {"label": "Varios", "amount": 1338.24},
+      {"label": "Alumbrado de losa deportiva", "amount": 34273.76}
+    ]
+  }
+]
