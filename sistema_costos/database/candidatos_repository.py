@@ -2,12 +2,16 @@
 
 import hashlib
 import json
+
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .connection import DatabaseConnection
-from ..domain.partida_candidata import EstadoRevision, PartidaCandidata
+from ..domain.partida_candidata import (
+    EstadoRevision,
+    PartidaCandidata,
+)
 
 
 class CandidatosRepository:
@@ -105,7 +109,8 @@ class CandidatosRepository:
             for valor in valores[:4]
         ):
             raise ValueError(
-                "Identificador, nombre, ruta y fuente son obligatorios."
+                "Identificador, nombre, ruta y fuente "
+                "son obligatorios."
             )
 
         with DatabaseConnection(self.path) as db:
@@ -121,15 +126,20 @@ class CandidatosRepository:
             if existente is not None:
                 if tuple(existente) != valores:
                     raise ValueError(
-                        "El identificador ya corresponde a otro "
-                        "registro documental."
+                        "El identificador ya corresponde "
+                        "a otro registro documental."
                     )
                 return
 
             db.execute(
                 """
-                INSERT INTO documentos_revision
-                    (id, nombre, ruta_local, fuente, obra_clave)
+                INSERT INTO documentos_revision (
+                    id,
+                    nombre,
+                    ruta_local,
+                    fuente,
+                    obra_clave
+                )
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 valores,
@@ -207,23 +217,19 @@ class CandidatosRepository:
         consulta += " ORDER BY c.creado_en DESC, c.id"
 
         with DatabaseConnection(self.path) as db:
-            filas = db.fetch_all(consulta, parametros)
-
-        return [dict(fila) for fila in filas]
+            return [
+                dict(fila)
+                for fila in db.fetch_all(consulta, parametros)
+            ]
 
     def revisar(
         self,
         candidato_id: str,
         estado: EstadoRevision,
-        responsable: str,
+        responsable: str = "",
         observacion: str = "",
     ) -> None:
         nuevo_estado = EstadoRevision(estado).value
-
-        if not responsable.strip():
-            raise ValueError(
-                "Debe indicarse quién revisa el registro."
-            )
 
         with DatabaseConnection(self.path) as db:
             db.execute("BEGIN IMMEDIATE")
