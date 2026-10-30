@@ -11,6 +11,7 @@ from tkinter import messagebox, ttk, filedialog
 import customtkinter as ctk
 
 from ..services.references_service import ReferencesService
+from ..services.procesador_pdf import detectar_terminos
 
 PILOT = 'AS-SM-16-2023-OEC/PERPG-GRMOQ-1'
 
@@ -91,12 +92,15 @@ class PortalPanel(ctk.CTkFrame):
         self.info.grid(row=4, column=0, sticky='nsew', pady=(2, 5))
         set_text(self.info, 'Seleccione un resultado para ver su ficha y documentos.' +
                  ('\nCaso de referencia: campamentos de Lomas de Ilo, código 507544.' if source == 'INFOBRAS' else '\nCaso de referencia: ' + PILOT + '. Busque CAMPAMENTOS en 2023.'))
-        frame, self.documents = table(self, [('number', 'N.º', 50), ('name', 'Documento', 520), ('stage', 'Etapa / formato', 190), ('date', 'Publicación', 140)], height=4)
+        frame, self.documents = table(self, [('number', 'N.º', 50), ('name', 'Documento', 420), ('cost', 'Señales en el título', 210), ('stage', 'Etapa / formato', 170), ('date', 'Publicación', 130)], height=4)
         frame.grid(row=5, column=0, sticky='nsew', pady=4)
         bottom = ctk.CTkFrame(self, fg_color='transparent')
         bottom.grid(row=6, column=0, sticky='ew', pady=4)
         app.button(bottom, 'Descargar documento', self.download).pack(side='left', padx=(0, 8))
         app.button(bottom, 'Exportar ficha JSON', self.export).pack(side='left', padx=4)
+        self.solo_costos = ctk.CTkCheckBox(bottom, text='Solo títulos de costos', command=self.filtrar_documentos)
+        self.solo_costos.pack(side='left', padx=12)
+        app.inputs.append(self.solo_costos)
 
     def search(self):
         term = self.term.get().strip()
@@ -187,16 +191,25 @@ class PortalPanel(ctk.CTkFrame):
             text += '\n' + data['aviso']
         set_text(self.info, text)
         docs = data['documentos']
-        replace_rows(self.documents, [(d.get('numero', i+1), d.get('documento', d.get('nombre')), d.get('etapa', d.get('extension', '')), d.get('publicado_en', '')) for i, d in enumerate(docs)])
+        self.filtrar_documentos()
         self.scope.configure(text=f"{'GUARDADO · ' if saved else ''}Ficha: {data['asunto']} · {data['extraido_en']}")
         self.app.status.configure(text=f"Ficha {'recuperada' if saved else 'guardada'} · {len(docs)} documentos listados." + (' ' + data.get('aviso', '') if data.get('aviso') else ''))
+
+    def filtrar_documentos(self):
+        docs = self.detail_data['documentos'] if self.detail_data else []
+        self.visible_docs = sorted(docs, key=lambda d: not bool(detectar_terminos(d.get('documento', d.get('nombre', '')))))
+        if self.solo_costos.get():
+            self.visible_docs = [d for d in self.visible_docs if detectar_terminos(d.get('documento', d.get('nombre', '')))]
+        replace_rows(self.documents, [(d.get('numero', i+1), d.get('documento', d.get('nombre')),
+            ', '.join(detectar_terminos(d.get('documento', d.get('nombre', '')))) or 'Sin señal: revisar contenido',
+            d.get('etapa', d.get('extension', '')), d.get('publicado_en', '')) for i, d in enumerate(self.visible_docs)])
 
     def download(self):
         selected = self.documents.selection()
         if not selected or self.detail_data is None:
             return self.app.notice('Seleccione un documento de la ficha.')
         detail = self.detail_data
-        doc = detail['documentos'][int(selected[0])]
+        doc = self.visible_docs[int(selected[0])]
         self.app.run_task('Descargando y registrando procedencia…', lambda: self.app.service.download(detail, doc), self.app.download_complete)
 
     def export(self):
@@ -246,6 +259,9 @@ class ReferencesApp(ctk.CTk):
             panel.pack(fill='both', expand=True, padx=5, pady=4)
             self.panels[source] = panel
         self._build_history(self.tabs.add('Guardados'))
+        from .procesamiento_panel import ProcesamientoPanel
+        self.processing = ProcesamientoPanel(self.tabs.add('Procesar PDFs'), self)
+        self.processing.pack(fill='both', expand=True, padx=5, pady=4)
         footer = ctk.CTkFrame(self, fg_color='transparent')
         footer.grid(row=3, column=0, sticky='ew', padx=22, pady=(0, 14))
         footer.grid_columnconfigure(0, weight=1)
@@ -275,6 +291,7 @@ class ReferencesApp(ctk.CTk):
         bar.grid(row=2, column=0, sticky='ew', padx=8, pady=8)
         self.button(bar, 'Actualizar historial', self.refresh_history).pack(side='left', padx=4)
         self.button(bar, 'Reabrir selección', self.reopen).pack(side='left', padx=4)
+        self.button(bar, 'Procesar PDF guardado', self.process_saved).pack(side='left', padx=4)
         self.history_text = ctk.CTkTextbox(parent, wrap='word')
         self.history_text.grid(row=3, column=0, sticky='nsew', padx=8, pady=(0, 8))
         self.history.bind('<<TreeviewSelect>>', self.show_history_payload)
@@ -332,6 +349,15 @@ class ReferencesApp(ctk.CTk):
         except (OSError, ValueError) as error:
             self.show_error(error)
 
+    def process_saved(self):
+        try:
+            data = self.history_payload()
+            if data['tipo'] != 'descarga':
+                return self.notice('Seleccione una descarga del historial para procesar su PDF.')
+            self.processing.procesar_descarga(data)
+        except (OSError, ValueError) as error:
+            self.show_error(error)
+
     def run_task(self, label, job, complete):
         if self.busy:
             return
@@ -375,6 +401,8 @@ class ReferencesApp(ctk.CTk):
         info = data['descarga']
         self.last_download = Path(info['ruta_local'])
         self.status.configure(text=f"Descargado: {info['documento']} · {info['tamanio_bytes']:,} bytes. Archivo, procedencia y huella SHA-256 guardados.")
+        if self.processing.automatico.get():
+            self.processing.procesar_descarga(data)
 
     def open_last_download(self):
         if self.last_download is None:
@@ -393,8 +421,8 @@ class ReferencesApp(ctk.CTk):
         messagebox.showinfo('Referencias civiles', text, parent=self)
 
     def show_error(self, error):
-        self.status.configure(text='La operación no terminó. Puede consultar los resultados anteriores en Guardados.')
-        messagebox.showerror('No se pudo completar la operación', str(error)[:650] + '\n\nRevise su conexión e intente nuevamente. Si el portal solicita una verificación, requiere revisión manual.', parent=self)
+        self.status.configure(text='La operación no terminó. Los resultados anteriores siguen disponibles.')
+        messagebox.showerror('No se pudo completar la operación', str(error)[:650], parent=self)
 
     def _close(self):
         if self.busy:

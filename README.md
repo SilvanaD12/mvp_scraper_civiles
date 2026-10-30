@@ -1,5 +1,16 @@
 # CENITEG · Referencias de obras civiles
 
+## Procesamiento de PDFs (29 de octubre de 2026)
+
+La pestaña **Procesar PDFs** permite cargar documentos internos o procesar las
+descargas del scraper, conservar texto por página y registrar partidas candidatas
+en las tablas de revisión de Silvana. Los documentos se priorizan por términos
+de costos; los PDFs sin texto se identifican para posible OCR.
+
+Ver **[GUIA_PROCESAMIENTO_PDF.md](GUIA_PROCESAMIENTO_PDF.md)** para la demo,
+los formatos admitidos y las limitaciones. Actualizar dependencias con
+`.\.venv\Scripts\python.exe -m pip install -r requirements-mvp.txt`.
+
 Aplicación de escritorio para buscar obras en INFOBRAS y procedimientos en SEACE,
 consultar documentos y guardar evidencia para el análisis de costos.
 
