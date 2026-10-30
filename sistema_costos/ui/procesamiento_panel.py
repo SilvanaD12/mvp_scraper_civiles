@@ -29,6 +29,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         app.inputs.append(self.obra)
         app.button(barra, 'Cargar PDF', self.cargar).pack(side='left', padx=4)
         app.button(barra, 'Actualizar', self.actualizar).pack(side='left', padx=4)
+        app.button(barra, 'Reprocesar / OCR', self.reprocesar).pack(side='left', padx=4)
         self.automatico = ctk.CTkCheckBox(barra, text='Procesar al descargar')
         self.automatico.select()
         self.automatico.pack(side='left', padx=10)
@@ -37,8 +38,15 @@ class ProcesamientoPanel(ctk.CTkFrame):
             ('estado', 'Resultado', 220), ('paginas', 'Páginas', 70), ('candidatos', 'Candidatos', 80)], height=5)
         frame.grid(row=2, column=0, sticky='nsew', pady=5)
         self.tabla.bind('<<TreeviewSelect>>', self.seleccionar)
-        self.resumen = ctk.CTkLabel(self, text='Sin documentos procesados.', anchor='w', wraplength=1000)
-        self.resumen.grid(row=3, column=0, sticky='ew', pady=4)
+        estado = ctk.CTkFrame(self, fg_color='transparent')
+        estado.grid(row=3, column=0, sticky='ew', pady=4)
+        estado.grid_columnconfigure(0, weight=1)
+        self.resumen = ctk.CTkLabel(estado, text='Seleccione un documento.', anchor='w')
+        self.resumen.grid(row=0, column=0, sticky='ew', padx=5)
+        app.button(estado, 'Ver detalles', self.ver_detalles).grid(row=0, column=1, padx=5)
+        self.detalles = ctk.CTkLabel(estado, text='', anchor='w', justify='left', wraplength=1000)
+        self.detalles.grid(row=1, column=0, columnspan=2, sticky='ew', padx=5)
+        self.detalles.grid_remove()
         controles = ctk.CTkFrame(self, fg_color='transparent')
         controles.grid(row=4, column=0, sticky='ew')
         ctk.CTkLabel(controles, text='Página del PDF:').pack(side='left', padx=5)
@@ -84,6 +92,14 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.app.run_task('Procesando documento descargado…',
                           lambda: self.service.procesar_descarga(payload), self.completado)
 
+    def reprocesar(self):
+        if not self.actual:
+            return self.app.notice('Seleccione un documento para volver a procesarlo.')
+        fila = dict(self.actual)
+        self.app.run_task('Leyendo PDF y aplicando OCR a páginas sin texto…',
+            lambda: self.service.procesar(fila['ruta_local'], nombre=fila['nombre'],
+                fuente=fila['fuente'], obra_clave=fila.get('obra_clave')), self.completado)
+
     def completado(self, resultado):
         self.actualizar()
         for i, fila in enumerate(self.filas):
@@ -103,18 +119,30 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.paginas = self.service.paginas(self.actual['documento_id'])
         terminos = ', '.join(self.actual['terminos_contenido']) or 'ninguno'
         relevantes = ', '.join(map(str, self.actual['paginas_relevantes'])) or 'ninguna'
-        self.resumen.configure(text=f"Señales en el contenido: {terminos}. Páginas con señales: {relevantes}.\n" +
-                               ' '.join(self.actual['avisos']))
+        self.detalles.configure(text=f"Contenido detectado: {terminos}. Páginas: {relevantes}.\n" +
+                                ' '.join(self.actual['avisos']))
+        self.detalles.grid_remove()
+        total = self.actual['candidatos']
+        resultado = f"{total} hallazgos para revisar" if total else 'Sin partidas reconocidas'
+        self.resumen.configure(text=f"{self.actual['paginas']} páginas · {resultado}")
         valores = [str(p['pagina']) for p in self.paginas] or ['1']
         self.selector.configure(values=valores)
         primera = str(self.actual['paginas_relevantes'][0]) if self.actual['paginas_relevantes'] else valores[0]
         self.selector.set(primera)
         self.mostrar_pagina(primera)
 
+    def ver_detalles(self):
+        if not self.actual:
+            return self.app.notice('Seleccione un documento procesado.')
+        if self.detalles.winfo_ismapped():
+            self.detalles.grid_remove()
+        else:
+            self.detalles.grid()
+
     def mostrar_pagina(self, numero):
         pagina = next((p for p in self.paginas if p['pagina'] == int(numero)), None)
         if pagina:
-            self.set_text(self.texto, f"PÁGINA {numero} · Evidencia extraída del documento\n\n" +
+            self.set_text(self.texto, f"PÁGINA {numero} · {'Texto recuperado por OCR' if int(numero) in self.actual.get('paginas_ocr', []) else 'Texto del PDF'}\n\n" +
                           (pagina['texto'] or 'Sin texto extraíble. Esta página puede requerir OCR o estar vacía.'))
 
     def buscar(self):

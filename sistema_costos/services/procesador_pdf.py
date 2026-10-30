@@ -7,6 +7,7 @@ import re
 import unicodedata
 
 from ..domain.partida_candidata import PartidaCandidata
+from .ocr_pdf import ErrorOCR, LectorOCR
 
 
 def normalizar(texto: str) -> str:
@@ -91,6 +92,7 @@ class PaginaExtraida:
     numero: int
     texto: str
     terminos: list[str]
+    metodo: str = "texto_pdf"
 
 
 @dataclass
@@ -115,6 +117,8 @@ def procesar_pdf(ruta: Path, documento_id: str, titulo: str) -> ResultadoPDF:
 
     if ruta.suffix.lower() != '.pdf' or not ruta.is_file():
         raise ValueError('Seleccione un archivo PDF existente. ZIP y RAR deben descomprimirse primero.')
+    ocr = None
+    ocr_no_disponible = False
     try:
         lector = PdfReader(ruta)
         if lector.is_encrypted and not lector.decrypt(''):
@@ -122,10 +126,32 @@ def procesar_pdf(ruta: Path, documento_id: str, titulo: str) -> ResultadoPDF:
         resultado = ResultadoPDF(terminos_titulo=detectar_terminos(titulo))
         for indice, pagina in enumerate(lector.pages, 1):
             texto = pagina.extract_text() or ''
-            resultado.paginas.append(PaginaExtraida(indice, texto, detectar_terminos(texto)))
+            metodo = 'texto_pdf'
+            if not texto.strip() and not ocr_no_disponible:
+                try:
+                    if ocr is None:
+                        ocr = LectorOCR(ruta)
+                        if ocr.idioma == 'eng':
+                            resultado.avisos.append('OCR con idioma inglés; instala español (spa) para mejorar acentos y términos.')
+                    texto = ocr.leer_pagina(indice)
+                    metodo = 'ocr' if texto.strip() else 'sin_texto'
+                except ErrorOCR as error:
+                    resultado.avisos.append(str(error))
+                    if ocr is None:
+                        ocr_no_disponible = True
+                    metodo = 'sin_texto'
+            elif not texto.strip():
+                metodo = 'sin_texto'
+            resultado.paginas.append(PaginaExtraida(indice, texto, detectar_terminos(texto), metodo))
             resultado.candidatos.extend(extraer_partidas(documento_id, indice, texto))
     except (PdfReadError, OSError) as error:
         raise ValueError(f'No se pudo leer el PDF: {error}') from error
+    finally:
+        if ocr is not None:
+            ocr.cerrar()
+    paginas_ocr = [p.numero for p in resultado.paginas if p.metodo == 'ocr']
+    if paginas_ocr:
+        resultado.avisos.append('Texto recuperado por OCR en páginas: ' + ', '.join(map(str, paginas_ocr)) + '. La lectura puede contener errores.')
     sin_texto = sum(not p.texto.strip() for p in resultado.paginas)
     if sin_texto:
         resultado.avisos.append(f'{sin_texto} páginas sin texto extraíble: pueden requerir OCR o estar vacías.')

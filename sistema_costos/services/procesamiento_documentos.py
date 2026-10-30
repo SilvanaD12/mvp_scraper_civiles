@@ -51,6 +51,7 @@ class ProcesamientoDocumentos:
             'documento_id': documento_id, 'nombre': nombre, 'ruta_local': str(ruta),
             'fuente': fuente, 'obra_clave': obra_clave, 'sha256': digest,
             'estado': resultado.estado, 'paginas': len(resultado.paginas),
+            'paginas_ocr': [p.numero for p in resultado.paginas if p.metodo == 'ocr'],
             'paginas_sin_texto': sum(not p.texto.strip() for p in resultado.paginas),
             'paginas_relevantes': [p.numero for p in resultado.paginas if p.terminos],
             'terminos_titulo': resultado.terminos_titulo,

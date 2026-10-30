@@ -1,0 +1,4 @@
+# Mantener también las dependencias de requirements-mvp.txt.
+pypdfium2>=4,<6
+Pillow>=10,<13
+# El ejecutable Tesseract OCR se instala por separado en Windows.
