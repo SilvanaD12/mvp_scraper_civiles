@@ -88,6 +88,35 @@ class CandidatosRepository:
                 COMMIT;
             """)
 
+            # Agregar los campos nuevos sin eliminar datos existentes.
+            db.execute("BEGIN IMMEDIATE")
+
+            columnas = {
+                fila["name"]
+                for fila in db.fetch_all(
+                    "PRAGMA table_info(partidas_candidatas)"
+                )
+            }
+
+            for nombre, tipo in (
+                ("obra", "TEXT"),
+                ("anio", "INTEGER"),
+                ("lugar", "TEXT"),
+                ("monto_texto", "TEXT"),
+                ("tipo_monto", "TEXT"),
+            ):
+                if nombre not in columnas:
+                    db.execute(
+                        f"ALTER TABLE partidas_candidatas "
+                        f"ADD COLUMN {nombre} {tipo}"
+                    )
+
+            db.execute(
+                "INSERT OR IGNORE INTO revision_migrations "
+                "(version, aplicada_en) "
+                "VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+            )
+
     def registrar_documento(
         self,
         documento_id: str,
@@ -148,8 +177,29 @@ class CandidatosRepository:
     def guardar(self, candidato: PartidaCandidata) -> str:
         datos = asdict(candidato)
 
+        nuevos = (
+            "obra",
+            "anio",
+            "lugar",
+            "monto_texto",
+            "tipo_monto",
+        )
+
+        # Mantener los identificadores de las partidas existentes.
+        identidad = {
+            campo: valor
+            for campo, valor in datos.items()
+            if campo not in nuevos
+        }
+
+        # Diferenciar montos generales sin precio unitario.
+        if candidato.precio_unitario_texto is None:
+            for campo in ("monto_texto", "tipo_monto"):
+                if datos[campo] is not None:
+                    identidad[campo] = datos[campo]
+
         contenido = json.dumps(
-            datos,
+            identidad,
             ensure_ascii=False,
             sort_keys=True,
         )
@@ -158,34 +208,26 @@ class CandidatosRepository:
             contenido.encode("utf-8")
         ).hexdigest()
 
+        campos = tuple(datos)
+        columnas = ", ".join(campos)
+        parametros = ", ".join("?" for _ in campos)
+
+        # Un valor ausente no borra contexto guardado previamente.
+        actualizaciones = ", ".join(
+            f"{campo} = COALESCE("
+            f"excluded.{campo}, partidas_candidatas.{campo})"
+            for campo in nuevos
+        )
+
         with DatabaseConnection(self.path) as db:
             db.execute(
-                """
-                INSERT INTO partidas_candidatas (
-                    id,
-                    documento_id,
-                    pagina,
-                    descripcion,
-                    texto_evidencia,
-                    unidad,
-                    cantidad_texto,
-                    precio_unitario_texto,
-                    moneda,
-                    creado_en
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO NOTHING
-                """,
+                f"INSERT INTO partidas_candidatas "
+                f"(id, {columnas}, creado_en) "
+                f"VALUES (?, {parametros}, ?) "
+                f"ON CONFLICT(id) DO UPDATE SET {actualizaciones}",
                 (
                     identificador,
-                    candidato.documento_id,
-                    candidato.pagina,
-                    candidato.descripcion,
-                    candidato.texto_evidencia,
-                    candidato.unidad,
-                    candidato.cantidad_texto,
-                    candidato.precio_unitario_texto,
-                    candidato.moneda,
+                    *(datos[campo] for campo in campos),
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )

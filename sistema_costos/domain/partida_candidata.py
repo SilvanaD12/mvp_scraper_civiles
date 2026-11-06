@@ -21,6 +21,11 @@ class PartidaCandidata:
     cantidad_texto: str | None = None
     precio_unitario_texto: str | None = None
     moneda: str | None = None
+    obra: str | None = None
+    anio: int | None = None
+    lugar: str | None = None
+    monto_texto: str | None = None
+    tipo_monto: str | None = None
 
     def __post_init__(self) -> None:
         if not self.documento_id.strip():
