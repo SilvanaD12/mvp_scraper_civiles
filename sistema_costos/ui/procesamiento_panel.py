@@ -17,10 +17,9 @@ from ..services.consulta_resultados import ConsultaResultados
 class ProcesamientoPanel(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent, fg_color="transparent")
-        from .references_app import table, set_text
+        from .references_app import table
 
         self.app = app
-        self.set_text = set_text
         self.service = ProcesamientoDocumentos(app.settings)
 
         ruta = app.settings.database_path
@@ -50,33 +49,41 @@ class ProcesamientoPanel(ctk.CTkFrame):
             side="left", padx=4
         )
 
+        self.boton_documentos = app.button(
+            barra, "Ver documentos", self.alternar_documentos
+        )
+        self.boton_documentos.pack(side="left", padx=4)
+
         self.automatico = ctk.CTkCheckBox(
             barra, text="Procesar al descargar"
         )
         self.automatico.select()
         self.automatico.pack(side="left", padx=10)
 
-        self.referencia = ctk.CTkEntry(
-            barra,
-            width=240,
-            placeholder_text="Obra / referencia (opcional)",
-        )
-        self.referencia.pack(
-            side="left", padx=4, fill="x", expand=True
-        )
-        app.inputs.extend([self.automatico, self.referencia])
+        app.inputs.append(self.automatico)
 
         self.resumen = ctk.CTkLabel(
             self,
-            text="Cargue un PDF o seleccione un documento.",
+            text="Cargue un PDF y pulse Procesar, o consulte sus resultados guardados.",
             anchor="w",
         )
         self.resumen.grid(
             row=1, column=0, sticky="ew", padx=5, pady=4
         )
 
+        self.documentos_frame = ctk.CTkFrame(self)
+        self.documentos_frame.grid(row=2, column=0, sticky="ew", pady=4)
+        self.documentos_frame.grid_columnconfigure(0, weight=1)
+
+        self.referencia = ctk.CTkEntry(
+            self.documentos_frame,
+            placeholder_text="Obra / referencia opcional para la próxima carga",
+        )
+        self.referencia.grid(row=0, column=0, sticky="ew", padx=6, pady=6)
+        app.inputs.append(self.referencia)
+
         frame, self.tabla = table(
-            self,
+            self.documentos_frame,
             [
                 ("nombre", "Documento", 510),
                 ("fuente", "Fuente", 130),
@@ -85,8 +92,9 @@ class ProcesamientoPanel(ctk.CTkFrame):
             ],
             height=3,
         )
-        frame.grid(row=2, column=0, sticky="ew", pady=4)
+        frame.grid(row=1, column=0, sticky="ew", padx=6, pady=4)
         self.tabla.bind("<<TreeviewSelect>>", self.seleccionar)
+        self.documentos_frame.grid_remove()
 
         bloque_filtros = ctk.CTkFrame(
             self, fg_color="transparent"
@@ -115,6 +123,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
             command=lambda _: self.actualizar_resultados(),
         )
         self.ambito.pack(side="left", padx=4)
+        self.ambito.set("Todos los documentos")
 
         self.busqueda = ctk.CTkEntry(
             filtros,
@@ -210,9 +219,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
             minwidth=60,
         )
         self.resultados.bind("<Button-1>", self.alternar_marca)
-        self.resultados.bind(
-            "<<TreeviewSelect>>", self.mostrar_detalle
-        )
+        self.resultados.bind("<<TreeviewSelect>>", self.resumir_resultado)
 
         pie = ctk.CTkFrame(self, fg_color="transparent")
         pie.grid(row=5, column=0, sticky="ew", pady=5)
@@ -232,10 +239,6 @@ class ProcesamientoPanel(ctk.CTkFrame):
         )
         self.boton_cancelar.pack(side="left", padx=4)
 
-        app.button(
-            pie, "Ver detalles", self.ver_detalles
-        ).pack(side="right", padx=4)
-
         self.contador = ctk.CTkLabel(
             self, text="", anchor="w"
         )
@@ -243,27 +246,15 @@ class ProcesamientoPanel(ctk.CTkFrame):
             row=6, column=0, sticky="ew", padx=5, pady=3
         )
 
-        self.detalle_frame = ctk.CTkFrame(self)
-        self.detalle_frame.grid(
-            row=7, column=0, sticky="ew", pady=4
-        )
-        self.detalle_frame.grid_columnconfigure(0, weight=1)
-
-        self.detalle = ctk.CTkTextbox(
-            self.detalle_frame, height=100, wrap="word"
-        )
-        self.detalle.grid(
-            row=0, column=0, sticky="ew", padx=6, pady=6
-        )
-
-        app.button(
-            self.detalle_frame,
-            "Abrir PDF original",
-            self.abrir,
-        ).grid(row=0, column=1, padx=6)
-
-        self.detalle_frame.grid_remove()
         self.actualizar()
+
+    def alternar_documentos(self):
+        if self.documentos_frame.winfo_ismapped():
+            self.documentos_frame.grid_remove()
+            self.boton_documentos.configure(text="Ver documentos")
+        else:
+            self.documentos_frame.grid()
+            self.boton_documentos.configure(text="Ocultar documentos")
 
     def mensaje(self, texto):
         self.contador.configure(text=texto)
@@ -428,7 +419,6 @@ class ProcesamientoPanel(ctk.CTkFrame):
             self.consulta.cancelar()
             self.consulta.filas = {}
             self.resultados.delete(*self.resultados.get_children())
-            self.mostrar_detalle()
             self.mensaje(
                 "Seleccione un documento o elija "
                 "Todos los documentos para consultar."
@@ -469,7 +459,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
                     "Guardado" if self.consulta.guardadas else "☐",
                     fila["descripcion"],
                     fila.get("unidad") or "Sin extraer",
-                    fila.get("precio_unitario_texto") or "Sin extraer",
+                    fila.get("precio_unitario_texto") or "No encontrado",
                     fila.get("moneda") or "Sin registrar",
                     fila.get("fuente") or "Sin registrar",
                     fila.get("obra")
@@ -481,7 +471,11 @@ class ProcesamientoPanel(ctk.CTkFrame):
             )
 
         self.contar()
-        self.mostrar_detalle()
+        if not filas:
+            self.mensaje(
+                "No hay resultados para esta vista y estos filtros. "
+                "Pruebe Limpiar o cambie la vista de resultados."
+            )
 
     def contar(self):
         deshabilitar = (
@@ -586,75 +580,13 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.vaciar_filtros()
         self.actualizar_resultados()
 
-    def ver_detalles(self):
-        if self.detalle_frame.winfo_ismapped():
-            self.detalle_frame.grid_remove()
-        else:
-            self.mostrar_detalle()
-            self.detalle_frame.grid()
-
-    def mostrar_detalle(self, _evento=None):
-        ids = self.resultados.selection()
-        fila = self.consulta.filas.get(ids[0]) if ids else None
-
+    def resumir_resultado(self, _evento=None):
+        seleccion = self.resultados.selection()
+        fila = self.consulta.filas.get(seleccion[0]) if seleccion else None
         if fila:
-            campos = (
-                ("Documento", fila.get("documento_nombre")),
-                ("Página", fila.get("pagina")),
-                ("Fuente", fila.get("fuente")),
-                (
-                    "Obra",
-                    fila.get("obra") or fila.get("obra_clave"),
-                ),
-                ("Año", fila.get("anio")),
-                ("Lugar", fila.get("lugar")),
-                ("Descripción", fila.get("descripcion")),
-                ("Unidad", fila.get("unidad")),
-                ("Cantidad", fila.get("cantidad_texto")),
-                (
-                    "Precio unitario",
-                    fila.get("precio_unitario_texto"),
-                ),
-                ("Monto general", fila.get("monto_texto")),
-                ("Tipo de monto", fila.get("tipo_monto")),
-                ("Moneda", fila.get("moneda")),
-            )
-            texto = "\n".join(
-                f"{etiqueta}: "
-                f"{valor if valor is not None and valor != '' else 'Sin registrar'}"
-                for etiqueta, valor in campos
-            )
-            texto += (
-                "\n\nEvidencia original\n"
-                + (fila.get("texto_evidencia") or "")
-            )
-        elif self.actual:
-            texto = "\n".join(
-                self.actual.get("avisos", [])
-            ) or "Seleccione un resultado para consultar su evidencia."
-        else:
-            texto = (
-                "Seleccione un documento o un resultado "
-                "para consultar su procedencia."
-            )
-
-        self.set_text(self.detalle, texto)
-
-    def abrir(self):
-        ids = self.resultados.selection()
-        try:
-            if ids:
-                ruta = self.revision.obtener_ruta_pdf(ids[0])
-            elif self.actual:
-                ruta = Path(self.actual["ruta_local"])
-            else:
-                return self.mensaje(
-                    "Seleccione un resultado o un documento."
-                )
-
-            self.app.open_path(ruta)
-        except (ValueError, OSError) as error:
-            self.app.show_error(error)
+            fuente = fila.get("fuente") or "Fuente no registrada"
+            obra = fila.get("obra") or fila.get("obra_clave") or "Obra no registrada"
+            self.resumen.configure(text=f"{fuente} · {obra}")
 
     def revisar(self):
         self.actualizar_resultados()
