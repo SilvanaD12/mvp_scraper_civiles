@@ -202,6 +202,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
                 ("descripcion", "Descripción", 380),
                 ("unidad", "Unidad", 70),
                 ("precio", "Precio unitario", 130),
+                ("monto", "Monto general", 130),
                 ("moneda", "Moneda", 80),
                 ("fuente", "Fuente", 100),
                 ("obra", "Obra / referencia", 240),
@@ -331,6 +332,9 @@ class ProcesamientoPanel(ctk.CTkFrame):
                     nombre=fila["nombre"],
                     fuente=fila["fuente"],
                     obra_clave=fila.get("obra_clave"),
+                    contexto=fila.get("contexto"),
+                    archivo_origen=fila.get("archivo_origen"),
+                    miembro_archivo=fila.get("miembro_archivo"),
                 ),
                 self.completado,
             )
@@ -341,11 +345,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
     def procesar_descarga(self, payload):
         ruta = Path(payload["descarga"]["ruta_local"])
-        if ruta.suffix.lower() != ".pdf":
-            return self.app.notice(
-                "La descarga se conservó. "
-                "Descomprima el ZIP/RAR y cargue su PDF."
-            )
+        if ruta.suffix.lower() not in (".pdf", ".zip", ".rar"):
+            return self.app.notice("La descarga se conservó. Se admiten PDF, ZIP y RAR.")
 
         self.app.tabs.set("Procesar PDFs")
         self.app.run_task(
@@ -380,6 +381,14 @@ class ProcesamientoPanel(ctk.CTkFrame):
             self.seleccionar()
 
         self.app.tabs.set("Procesar PDFs")
+        if lote := resultado.get("lote"):
+            self.app.status.configure(text=(
+                f"{lote['archivo']} · {lote['documentos_procesados']} PDFs procesados · "
+                f"{lote['candidatos']} hallazgos."
+            ))
+            if lote["avisos"]:
+                self.app.notice("El archivo se procesó con avisos:\n" + "\n".join(lote["avisos"][:5]))
+            return
         self.app.status.configure(
             text=(
                 f"Procesado: {resultado['nombre']} · "
@@ -459,7 +468,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
                     "Guardado" if self.consulta.guardadas else "☐",
                     fila["descripcion"],
                     fila.get("unidad") or "Sin extraer",
-                    fila.get("precio_unitario_texto") or "No encontrado",
+                    fila.get("precio_unitario_texto") or "",
+                    (fila.get("monto_texto") or "") if not fila.get("precio_unitario_texto") else "",
                     fila.get("moneda") or "Sin registrar",
                     fila.get("fuente") or "Sin registrar",
                     fila.get("obra")
@@ -586,7 +596,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         if fila:
             fuente = fila.get("fuente") or "Fuente no registrada"
             obra = fila.get("obra") or fila.get("obra_clave") or "Obra no registrada"
-            self.resumen.configure(text=f"{fuente} · {obra}")
+            self.resumen.configure(text=f"{fuente} · {obra} · Página {fila['pagina']}")
 
     def revisar(self):
         self.actualizar_resultados()

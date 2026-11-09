@@ -55,7 +55,8 @@ class LectorOCR:
                 with bitmap.to_pil() as captura:
                     captura.save(imagen)
                 respuesta = subprocess.run(
-                    [self.ejecutable, str(imagen), 'stdout', '-l', self.idioma, '--psm', '6'],
+                    [self.ejecutable, str(imagen), 'stdout', '-l', self.idioma, '--psm', '6',
+                     '-c', 'preserve_interword_spaces=1'],
                     capture_output=True, timeout=90, **self._opciones())
                 if respuesta.returncode:
                     detalle = respuesta.stderr.decode('utf-8', errors='replace').strip()

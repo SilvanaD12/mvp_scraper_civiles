@@ -291,7 +291,7 @@ class ReferencesApp(ctk.CTk):
         bar.grid(row=2, column=0, sticky='ew', padx=8, pady=8)
         self.button(bar, 'Actualizar historial', self.refresh_history).pack(side='left', padx=4)
         self.button(bar, 'Reabrir selección', self.reopen).pack(side='left', padx=4)
-        self.button(bar, 'Procesar PDF guardado', self.process_saved).pack(side='left', padx=4)
+        self.button(bar, 'Procesar descarga', self.process_saved).pack(side='left', padx=4)
         self.history_text = ctk.CTkTextbox(parent, wrap='word')
         self.history_text.grid(row=3, column=0, sticky='nsew', padx=8, pady=(0, 8))
         self.history.bind('<<TreeviewSelect>>', self.show_history_payload)
