@@ -11,6 +11,7 @@ from tkinter import messagebox, ttk, filedialog
 import customtkinter as ctk
 
 from ..services.references_service import ReferencesService
+from ..services.gestion_descargas import GestionDescargas
 from ..services.procesador_pdf import detectar_terminos
 
 PILOT = 'AS-SM-16-2023-OEC/PERPG-GRMOQ-1'
@@ -292,6 +293,7 @@ class ReferencesApp(ctk.CTk):
         self.button(bar, 'Actualizar historial', self.refresh_history).pack(side='left', padx=4)
         self.button(bar, 'Reabrir selección', self.reopen).pack(side='left', padx=4)
         self.button(bar, 'Procesar descarga', self.process_saved).pack(side='left', padx=4)
+        self.button(bar, 'Eliminar descarga', self.delete_saved_download).pack(side='left', padx=4)
         self.history_text = ctk.CTkTextbox(parent, wrap='word')
         self.history_text.grid(row=3, column=0, sticky='nsew', padx=8, pady=(0, 8))
         self.history.bind('<<TreeviewSelect>>', self.show_history_payload)
@@ -299,6 +301,7 @@ class ReferencesApp(ctk.CTk):
     def refresh_history(self):
         self.history_rows = self.service.store.recent()
         replace_rows(self.history, [(r['source'], r['kind'], r['subject'], r['created_at']) for r in self.history_rows])
+        set_text(self.history_text, 'Seleccione un registro.')
 
     def history_payload(self):
         selected = self.history.selection()
@@ -357,6 +360,33 @@ class ReferencesApp(ctk.CTk):
             self.processing.procesar_descarga(data)
         except (OSError, ValueError) as error:
             self.show_error(error)
+
+    def delete_saved_download(self):
+        try:
+            data = self.history_payload()
+            if data['tipo'] != 'descarga':
+                return self.notice('Selecciona una descarga del historial.')
+        except ValueError as error:
+            return self.notice(str(error))
+        info = data['descarga']
+        if not messagebox.askyesno(
+            'Eliminar descarga',
+            f"¿Eliminar «{info['documento']}» de este equipo?\n\n"
+            'También se eliminarán sus hallazgos y datos guardados asociados.',
+            parent=self,
+        ):
+            return
+        self.run_task('Eliminando descarga…',
+                      lambda: GestionDescargas(self.settings).eliminar(info['ruta_local']),
+                      self.download_deleted)
+
+    def download_deleted(self, resultado):
+        if self.last_download and not self.last_download.is_file():
+            self.last_download = None
+        self.processing.actualizar()
+        self.status.configure(text='Descarga eliminada y lista actualizada.')
+        if resultado.avisos:
+            self.notice('\n'.join(resultado.avisos))
 
     def run_task(self, label, job, complete):
         if self.busy:

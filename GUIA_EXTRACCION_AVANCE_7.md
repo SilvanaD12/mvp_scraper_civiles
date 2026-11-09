@@ -18,6 +18,12 @@ La rama `feature/extraccion-tablas-montos-archivos` parte de `main` con esos cam
 4. Use los filtros de obra, año y lugar cuando exista ese contexto. Los campos
    ausentes quedan vacíos en la base.
 
+Si un documento no produce hallazgos, la tabla de resultados lo indica.
+Para liberar espacio, seleccione un archivo en **Guardados → Eliminar
+descarga**. La confirmación incluye sus datos procesados asociados.
+Las fichas y búsquedas del portal se conservan para volver a descargar
+el documento cuando sea necesario.
+
 Para OCR se necesitan `requirements-ocr.txt` y Tesseract, de preferencia con
 español. Para RAR se usa `tar` con soporte RAR (el bsdtar de Windows verificado).
 ZIP no necesita un descompresor externo. Se extraen solo PDFs con cabecera

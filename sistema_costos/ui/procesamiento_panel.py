@@ -212,6 +212,10 @@ class ProcesamientoPanel(ctk.CTkFrame):
             height=8,
         )
         frame.grid(row=4, column=0, sticky="nsew", pady=4)
+        self.estado_vacio = ctk.CTkLabel(
+            frame, text="", wraplength=600, fg_color="#17232F",
+            text_color="#E1EAF2",
+        )
 
         self.resultados.column(
             "elegir",
@@ -292,6 +296,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         if self.actual:
             self.tabla.selection_set(conservar)
+        elif conservar:
+            self.resumen.configure(text="Seleccione un documento.")
 
         self.actualizar_resultados()
 
@@ -305,11 +311,12 @@ class ProcesamientoPanel(ctk.CTkFrame):
             return
 
         self.ruta_pendiente = Path(ruta)
+        self.actual = None
+        self.tabla.selection_remove(*self.tabla.selection())
+        self.ambito.set("Documento seleccionado")
+        self.actualizar_resultados()
         self.resumen.configure(
             text=f"Listo para procesar: {self.ruta_pendiente.name}"
-        )
-        self.mensaje(
-            "Pulse Procesar para leer el PDF y obtener sus resultados."
         )
 
     def procesar(self):
@@ -428,9 +435,10 @@ class ProcesamientoPanel(ctk.CTkFrame):
             self.consulta.cancelar()
             self.consulta.filas = {}
             self.resultados.delete(*self.resultados.get_children())
-            self.mensaje(
-                "Seleccione un documento o elija "
-                "Todos los documentos para consultar."
+            self.contar()
+            self.mostrar_vacio(
+                "Pulsa Procesar para leer el PDF cargado." if self.ruta_pendiente
+                else "Selecciona un documento para ver sus datos."
             )
             return
 
@@ -441,14 +449,17 @@ class ProcesamientoPanel(ctk.CTkFrame):
         ):
             doc = self.actual["documento_id"]
 
+        filtros = {
+            'termino': self.busqueda.get().strip(),
+            'obra': self.filtro_obra.get().strip(),
+            'anio': self.filtro_anio.get().strip(),
+            'lugar': self.filtro_lugar.get().strip(),
+        }
         try:
             filas = self.consulta.actualizar(
                 guardadas=self.vista.get() == "Datos guardados",
                 documento_id=doc,
-                termino=self.busqueda.get().strip(),
-                obra=self.filtro_obra.get().strip(),
-                anio=self.filtro_anio.get().strip(),
-                lugar=self.filtro_lugar.get().strip(),
+                **filtros,
             )
         except ValueError as error:
             self.mensaje(str(error))
@@ -458,6 +469,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
             return
 
         self.resultados.delete(*self.resultados.get_children())
+        self.estado_vacio.place_forget()
 
         for fila in filas:
             self.resultados.insert(
@@ -482,15 +494,28 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         self.contar()
         if not filas:
-            self.mensaje(
-                "No hay resultados para esta vista y estos filtros. "
-                "Pruebe Limpiar o cambie la vista de resultados."
-            )
+            if doc and not self.actual["candidatos"]:
+                texto = "No se encontraron datos en este documento."
+            elif any(filtros.values()):
+                texto = "No hay resultados con estos filtros."
+            elif self.consulta.guardadas:
+                texto = "No hay datos guardados en esta vista."
+            elif doc:
+                texto = "No hay hallazgos pendientes. Consulta Datos guardados."
+            else:
+                texto = "No hay hallazgos pendientes."
+            self.mostrar_vacio(texto)
+
+    def mostrar_vacio(self, texto):
+        self.estado_vacio.configure(text=texto)
+        self.estado_vacio.place(relx=.5, rely=.5, anchor="center")
+        self.mensaje("")
 
     def contar(self):
         deshabilitar = (
             self.consulta.guardadas
             or getattr(self.app, "busy", False)
+            or not self.consulta.filas
         )
         for boton in (
             self.boton_todos,
