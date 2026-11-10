@@ -1,6 +1,11 @@
 import json
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
+
+
+class InfobrasNoDisponible(RuntimeError):
+    """El portal no pudo atender la búsqueda en vivo."""
 
 
 class BuscadorInfobras:
@@ -32,11 +37,28 @@ class BuscadorInfobras:
             "pageSize": 20,
         })
 
-        with urlopen(
-            f"{self.URL_BUSQUEDA}?{parametros}",
-            timeout=30,
-        ) as response:
-            datos = json.load(response)
+        url = f"{self.URL_BUSQUEDA}?{parametros}"
+        for intento, espera in enumerate((15, 25), 1):
+            try:
+                with urlopen(url, timeout=espera) as response:
+                    datos = json.load(response)
+                break
+            except HTTPError as error:
+                if error.code in (502, 503, 504) and intento == 1:
+                    error.close()
+                    continue
+                error.close()
+                raise InfobrasNoDisponible(
+                    f"INFOBRAS no pudo atender la consulta (HTTP {error.code})."
+                ) from error
+            except (TimeoutError, URLError, ConnectionError) as error:
+                motivo = error.reason if isinstance(error, URLError) else error
+                if isinstance(motivo, (TimeoutError, ConnectionError)) and intento == 1:
+                    continue
+                mensaje = ("INFOBRAS tardó demasiado en responder."
+                           if isinstance(motivo, TimeoutError)
+                           else "No se pudo conectar con INFOBRAS.")
+                raise InfobrasNoDisponible(mensaje) from error
 
         if not isinstance(datos, dict):
             raise ValueError("INFOBRAS devolvió una respuesta inesperada.")

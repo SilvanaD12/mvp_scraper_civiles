@@ -116,9 +116,6 @@ class PortalPanel(ctk.CTkFrame):
             except ValueError:
                 return self.app.notice('Ingrese un año válido desde 2000 hasta el año actual.')
             job = lambda: self.app.service.search_seace(term, year)
-        self.clear_detail()
-        self.search_data = None
-        replace_rows(self.results, [])
         self.app.run_task('Buscando en ' + self.source + '…', job, self.show_search)
 
     def clear_detail(self):
@@ -127,12 +124,14 @@ class PortalPanel(ctk.CTkFrame):
         set_text(self.info, 'Consulte una ficha para ver el detalle.')
 
     def show_search(self, data, saved=False):
+        saved = saved or data.get('desde_historial', False)
         self.search_data = data
         self.clear_detail()
         rows = data['registros']
         if self.source == 'INFOBRAS':
             values = [(r.get('Codigo'), r.get('NombreObra'), r.get('CUI')) for r in rows]
-            scope = f"{data['termino']} · Página {data['pagina']} · {len(rows)} resultados mostrados · {data['total']} coincidencias en el portal"
+            tipo_total = 'coincidencias registradas' if saved else 'coincidencias en el portal'
+            scope = f"{data['termino']} · Página {data['pagina']} · {len(rows)} resultados mostrados · {data['total']} {tipo_total}"
         else:
             values = [(r['nomenclatura'], r['descripcion'], r['entidad'], r['publicado_en']) for r in rows]
             scope = f"{data['termino']} / {data['anio']} · {len(rows)} resultados mostrados · Solo primera página · {data.get('paginacion') or ''}"
@@ -140,7 +139,8 @@ class PortalPanel(ctk.CTkFrame):
         self.scope.configure(text=('GUARDADO · ' if saved else 'Consulta realizada · ') + scope)
         if not rows:
             set_text(self.info, 'No se encontraron resultados en esta consulta. Cambie el término o el año.')
-        self.app.status.configure(text=f"{len(rows)} resultados. Consulta {'recuperada' if saved else 'guardada'} · {data['extraido_en']}")
+        aviso = f"{data['aviso']} " if data.get('desde_historial') else ''
+        self.app.status.configure(text=f"{aviso}{len(rows)} resultados. Consulta {'recuperada' if saved else 'guardada'} · {data['extraido_en']}")
 
     def page(self, delta):
         if not self.search_data:

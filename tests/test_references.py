@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import io
 import json
 import sqlite3
 import tempfile
@@ -7,10 +8,12 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
 
 from sistema_costos.config.settings import Settings
 from sistema_costos.database.references_repository import ReferencesRepository, procedure_identity
 from sistema_costos.domain.obra_referencia import ObraReferencia
+from sistema_costos.scrapers.buscador_infobras import BuscadorInfobras, InfobrasNoDisponible
 from sistema_costos.scrapers.seace import SeaceScraper, public_download_url
 from sistema_costos.services.references_service import ReferencesService
 
@@ -106,6 +109,36 @@ class ReferencesTests(unittest.TestCase):
         latest = service.store.recent()[0]
         self.assertEqual(service.store.get(latest['id'])['registros'], [])
         self.assertEqual(result['total'], 0)
+
+    def test_infobras_reintenta_timeout_y_recupera_respuesta(self):
+        respuesta = io.BytesIO(b'{"Result": [{"Codigo": "123"}], "Parameters": {"records": 1}}')
+        with patch('sistema_costos.scrapers.buscador_infobras.urlopen',
+                   side_effect=[URLError(TimeoutError()), respuesta]) as consultar:
+            self.assertEqual(BuscadorInfobras().buscar('colegio'), (1, [{'Codigo': '123'}]))
+        self.assertEqual(consultar.call_count, 2)
+
+    def test_infobras_no_reintenta_limite_de_consultas(self):
+        error = HTTPError('https://example.test', 429, 'Rate limit', {}, None)
+        with patch('sistema_costos.scrapers.buscador_infobras.urlopen', side_effect=error) as consultar:
+            with self.assertRaisesRegex(InfobrasNoDisponible, '429'):
+                BuscadorInfobras().buscar('colegio')
+        consultar.assert_called_once()
+
+    def test_infobras_recupera_solo_la_misma_busqueda_y_pagina(self):
+        service = ReferencesService(self.settings)
+        with patch('sistema_costos.services.references_service.BuscadorInfobras.buscar', return_value=(519, [{'Codigo': '123'}])):
+            original = service.search_infobras('colegio')
+        with patch('sistema_costos.services.references_service.BuscadorInfobras.buscar',
+                   side_effect=InfobrasNoDisponible('INFOBRAS tardó demasiado en responder.')):
+            recuperada = service.search_infobras(' Colegio ')
+            self.assertTrue(recuperada['desde_historial'])
+            self.assertEqual(recuperada['extraido_en'], original['extraido_en'])
+            self.assertEqual(recuperada['registros'], original['registros'])
+            with self.assertRaisesRegex(InfobrasNoDisponible, 'Guardados'):
+                service.search_infobras('colegio', page=2)
+            with self.assertRaises(InfobrasNoDisponible):
+                service.search_infobras('hospital')
+        self.assertEqual(self.count('reference_events'), 1)
 
 
 if __name__ == '__main__':
