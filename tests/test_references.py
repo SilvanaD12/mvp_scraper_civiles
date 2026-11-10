@@ -92,12 +92,51 @@ class ReferencesTests(unittest.TestCase):
     def test_changed_procedure_blocks_opening(self):
         cells = ['0', 'Nueva entidad', '2023', 'AS-1', '', 'Servicio', 'Obra', '', '', '100', 'PEN', '', '']
         page = MagicMock()
-        row = page.locator.return_value.filter.return_value
-        row.count.return_value = 1
+        row = MagicMock()
+        page.locator.return_value.filter.return_value.element_handles.return_value = [row]
         row.inner_html.return_value = ''.join('<td>' + cell + '</td>' for cell in cells)
         with self.assertRaisesRegex(ValueError, 'resultado cambió'):
             SeaceScraper()._leer_ficha(page, 'AS-1', esperado={'nomenclatura': 'AS-1', 'entidad': 'Entidad anterior'})
-        row.locator.assert_not_called()
+        row.query_selector.assert_not_called()
+
+    def test_seace_abre_fila_seleccionada_con_codigo_repetido(self):
+        codigo = 'CP-SM-1-2023-UO/EP-0735-1'
+        def celdas(fecha):
+            datos = ['1', 'Entidad', fecha, codigo, '', 'Servicio', 'Mantenimiento de puente', '', '123', '100', 'PEN', '', '']
+            return ''.join('<td>' + valor + '</td>' for valor in datos)
+
+        elegida, otra = MagicMock(), MagicMock()
+        elegida.inner_html.return_value = celdas('05/08/2024 22:18')
+        otra.inner_html.return_value = celdas('27/03/2024 12:23')
+        esperado = SeaceScraper.parsear_tabla(
+            '<tbody><tr>' + elegida.inner_html.return_value + '</tr></tbody>'
+        )['registros'][0]
+        filas, ficha, cuerpo, tabla = [MagicMock() for _ in range(4)]
+        filas.filter.return_value.element_handles.return_value = [otra, elegida]
+        ficha.inner_html.return_value = f'<table><tr><td>Nomenclatura:</td><td>{codigo}</td></tr></table>'
+        tabla.inner_html.return_value = '<tbody id="tbFicha:dtDocumentos_data"></tbody>'
+        page = MagicMock()
+        page.locator.side_effect = [filas, ficha, cuerpo, tabla]
+
+        resultado = SeaceScraper()._leer_ficha(page, codigo, esperado=esperado)
+
+        self.assertEqual(resultado['nomenclatura'], codigo)
+        elegida.query_selector.return_value.click.assert_called_once()
+        otra.query_selector.assert_not_called()
+
+    def test_seace_no_abre_si_filas_siguen_siendo_indistinguibles(self):
+        html = ''.join('<td>' + valor + '</td>' for valor in
+                       ['1', 'Entidad', '2024', 'AS-1', '', 'Servicio', 'Puente', '', '', '100', 'PEN', '', ''])
+        esperado = SeaceScraper.parsear_tabla('<tbody><tr>' + html + '</tr></tbody>')['registros'][0]
+        filas = [MagicMock(), MagicMock()]
+        for fila in filas:
+            fila.inner_html.return_value = html
+        page = MagicMock()
+        page.locator.return_value.filter.return_value.element_handles.return_value = filas
+        with self.assertRaisesRegex(ValueError, 'no se pueden distinguir'):
+            SeaceScraper()._leer_ficha(page, 'AS-1', esperado=esperado)
+        for fila in filas:
+            fila.query_selector.assert_not_called()
 
     def test_download_url_omits_temporary_access_ticket(self):
         self.assertEqual(public_download_url('https://example.test/a.pdf?a=true&alf_ticket=secret&token=secret'), 'https://example.test/a.pdf?a=true')

@@ -173,33 +173,46 @@ class SeaceScraper:
                 nomenclatura,
                 exact=True,
             )
-        )
+        ).element_handles()
 
-        cantidad = coincidencias.count()
-
-        if cantidad == 0:
+        if not coincidencias:
             raise ValueError(
                 "El procedimiento no aparece en la primera página "
                 "de resultados para el término y año indicados."
             )
 
-        if cantidad > 1:
+        if esperado is not None:
+            claves = ('nomenclatura', 'entidad', 'publicado_en', 'descripcion',
+                      'objeto_contratacion', 'cui_texto')
+
+            def identidad(registro):
+                return tuple(' '.join((registro.get(clave) or '').split()) for clave in claves)
+
+            seleccionada = identidad(esperado)
+            verificadas = []
+            for fila in coincidencias:
+                html = '<table><tbody><tr>' + fila.inner_html() + '</tr></tbody></table>'
+                actual = self.parsear_tabla(html)['registros'][0]
+                if identidad(actual) == seleccionada:
+                    verificadas.append(fila)
+            if not verificadas:
+                raise ValueError('El resultado cambió desde la búsqueda. Busque de nuevo antes de abrir la ficha.')
+            coincidencias = verificadas
+
+        if len(coincidencias) > 1:
             raise ValueError(
-                "Hay varias filas con esa nomenclatura. "
-                "Debemos diferenciarlas antes de abrir la ficha."
+                "SEACE muestra varias filas que no se pueden distinguir con los datos disponibles. "
+                "Use una búsqueda más específica o abra la ficha en el portal."
             )
 
-        if esperado is not None:
-            html = '<table><tbody><tr>' + coincidencias.inner_html() + '</tr></tbody></table>'
-            actual = self.parsear_tabla(html)['registros'][0]
-            keys = ('nomenclatura', 'entidad', 'publicado_en', 'descripcion', 'objeto_contratacion', 'cui_texto')
-            if any(actual.get(key) != esperado.get(key) for key in keys):
-                raise ValueError('El resultado cambió desde la búsqueda. Busque de nuevo antes de abrir la ficha.')
-
-        # Abre la ficha de la fila seleccionada.
-        coincidencias.locator(
+        # Conservamos el elemento verificado. Si la tabla se reemplaza,
+        # el enlace se desprende en vez de apuntar a otra fila por posición.
+        enlace = coincidencias[0].query_selector(
             'a:has(img[id$=":grafichaSel"])'
-        ).click()
+        )
+        if enlace is None:
+            raise ValueError('No se encontró el enlace de ficha en la fila seleccionada.')
+        enlace.click()
 
         panel = page.locator(
             '[id="tbFicha:pnlContenedorFicha1"]'
