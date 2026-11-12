@@ -244,6 +244,12 @@ class ProcesamientoPanel(ctk.CTkFrame):
         )
         self.boton_cancelar.pack(side="left", padx=4)
 
+        self.boton_estimar = ctk.CTkButton(
+            pie, text="Enviar al estimador", command=self.enviar_estimador,
+            height=30,
+        )
+        self.boton_estimar.pack(side="left", padx=4)
+
         self.contador = ctk.CTkLabel(
             self, text="", anchor="w"
         )
@@ -511,7 +517,23 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.estado_vacio.place(relx=.5, rely=.5, anchor="center")
         self.mensaje("")
 
+    def enviar_estimador(self):
+        if getattr(self.app, "busy", False):
+            return
+        seleccion = self.resultados.selection()
+        fila = self.consulta.filas.get(seleccion[0]) if seleccion else None
+        if self.vista.get() != "Datos guardados" or not fila:
+            self.app.notice("Selecciona una partida de Datos guardados.")
+            return
+        estimador = self.app.estimacion_partidas
+        if estimador.agregar(fila):
+            self.app.tabs.set("Estimador")
+            estimador.master.select(estimador)
+
     def contar(self):
+        self.boton_estimar.configure(
+            state="normal" if self.consulta.guardadas and self.consulta.filas else "disabled"
+        )
         deshabilitar = (
             self.consulta.guardadas
             or getattr(self.app, "busy", False)

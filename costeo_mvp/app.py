@@ -100,20 +100,18 @@ def search_pdf_pages(paths: list[str], query: str, limit: int = 20) -> list[dict
     return results[:limit]
 
 
-class CosteoApp(tk.Tk):
-    def __init__(self) -> None:
-        super().__init__()
+class CosteoPanel(ttk.Frame):
+    def __init__(self, parent, *, theme=None) -> None:
+        super().__init__(parent)
+        self.theme = theme
         self.references = load_references()
         self.pdf_paths: list[str] = []
-        self.title("Costeo Civil - MVP de referencias")
-        self.geometry("1020x700")
-        self.minsize(850, 560)
         self._build_ui()
 
     def _build_ui(self) -> None:
         style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
+        if self.theme in style.theme_names():
+            style.theme_use(self.theme)
         style.configure("Title.TLabel", font=("Segoe UI", 17, "bold"))
         style.configure("Subtitle.TLabel", font=("Segoe UI", 10))
         style.configure("Section.TLabel", font=("Segoe UI", 11, "bold"))
@@ -127,7 +125,7 @@ class CosteoApp(tk.Tk):
             style="Subtitle.TLabel",
         ).pack(anchor="w", pady=(4, 0))
 
-        tabs = ttk.Notebook(self)
+        tabs = self.tabs = ttk.Notebook(self)
         tabs.pack(fill=BOTH, expand=True, padx=16, pady=(4, 16))
         self.estimate_tab = ttk.Frame(tabs, padding=18)
         self.search_tab = ttk.Frame(tabs, padding=18)
@@ -141,7 +139,7 @@ class CosteoApp(tk.Tk):
         left.pack(side=LEFT, fill=Y, padx=(0, 20))
         ttk.Label(left, text="Referencia COSTO", style="Section.TLabel").pack(anchor="w")
         self.reference_names = [row["name"] for row in self.references]
-        self.reference_var = tk.StringVar(value=self.reference_names[0])
+        self.reference_var = tk.StringVar(self, value=self.reference_names[0])
         self.reference_box = ttk.Combobox(
             left, textvariable=self.reference_var, values=self.reference_names, state="readonly", width=48
         )
@@ -149,7 +147,7 @@ class CosteoApp(tk.Tk):
         self.reference_box.bind("<<ComboboxSelected>>", lambda _event: self._on_reference_changed())
 
         ttk.Label(left, text="Área del proyecto (m²)", style="Section.TLabel").pack(anchor="w")
-        self.area_var = tk.StringVar(value="540")
+        self.area_var = tk.StringVar(self, value="540")
         ttk.Entry(left, textvariable=self.area_var, width=18).pack(anchor="w", pady=(8, 14))
         self.area_var.trace_add("write", self._on_estimate_input_changed)
         ttk.Button(left, text="Calcular referencia", command=self._calculate).pack(anchor="w")
@@ -243,7 +241,7 @@ class CosteoApp(tk.Tk):
             self.breakdown.insert("", END, values=("La fuente no aporta un desglose cargado para esta referencia.", "—"))
 
     def _export_csv(self) -> None:
-        if not hasattr(self, "last_estimate"):
+        if getattr(self, "last_estimate", None) is None:
             return
         target = filedialog.asksaveasfilename(
             title="Guardar estimación", defaultextension=".csv", filetypes=[("CSV", "*.csv")]
@@ -271,7 +269,7 @@ class CosteoApp(tk.Tk):
     def _build_search_tab(self) -> None:
         controls = ttk.Frame(self.search_tab)
         controls.pack(fill=X)
-        self.query_var = tk.StringVar()
+        self.query_var = tk.StringVar(self)
         ttk.Entry(controls, textvariable=self.query_var).pack(side=LEFT, fill=X, expand=True)
         ttk.Button(controls, text="Añadir PDFs", command=self._select_pdfs).pack(side=LEFT, padx=(8, 0))
         ttk.Button(controls, text="Buscar", command=self._search).pack(side=LEFT, padx=(8, 0))
@@ -312,6 +310,15 @@ class CosteoApp(tk.Tk):
                 continue
             self.results.insert(END, f"{match['source']} · página {match['page']} · coincidencias {match['score']}\n")
             self.results.insert(END, match["excerpt"] + "\n\n" + ("─" * 70) + "\n\n")
+
+
+class CosteoApp(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title("Costeo Civil - MVP de referencias")
+        self.geometry("1020x700")
+        self.minsize(850, 560)
+        CosteoPanel(self, theme="vista").pack(fill=BOTH, expand=True)
 
 
 def smoke_check() -> None:

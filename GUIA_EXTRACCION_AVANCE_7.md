@@ -61,3 +61,17 @@ se extraen de etiquetas explícitas y nunca se usan para inferir un precio.
 
 Los datos siguen siendo candidatos. Conectar el estimador y comprobar un
 caso con partidas validadas es una actividad conjunta posterior.
+
+## Estimar por partidas guardadas
+
+1. En **Procesar PDFs**, guarda las partidas cuyos precios quieras usar.
+2. Abre **Datos guardados**, selecciona una fila y pulsa **Enviar al estimador**.
+3. Coteja el precio y la unidad con el documento y la página indicados.
+   Ingresa el metrado de tu proyecto en esa unidad.
+4. En **Estimador → Por partidas**, revisa los parciales y el subtotal por
+   moneda. Puedes quitar una fila o volver a enviarla para cambiar el metrado.
+
+Cada parcial se redondea a dos decimales antes de sumarlo. El cálculo usa
+precios unitarios con unidad y moneda registrada, y conserva la referencia
+del documento. La lista de cálculo dura lo que dura la sesión. El cálculo
+por m² sigue disponible en la pestaña **Estimar**.

@@ -250,7 +250,7 @@ class ReferencesApp(ctk.CTk):
         header.grid(row=0, column=0, sticky='ew', padx=22, pady=(16, 4))
         ctk.CTkLabel(header, text='CENITEG  /  Referencias civiles', font=ctk.CTkFont(size=25, weight='bold')).pack(side='left')
         self.button(header, 'Abrir carpeta de datos', lambda: self.open_path(settings.data_dir)).pack(side='right')
-        ctk.CTkLabel(self, text='Busque obras, consulte sus documentos y conserve la fuente. Estimación de costos: pendiente de metrados, APUs y validación civil.', text_color='#B5C7D8', anchor='w').grid(row=1, column=0, sticky='ew', padx=22, pady=4)
+        ctk.CTkLabel(self, text='Busque obras, consulte sus documentos y conserve la fuente. Estime costos preliminares a partir de precios revisados y metrados ingresados.', text_color='#B5C7D8', anchor='w').grid(row=1, column=0, sticky='ew', padx=22, pady=4)
         self.tabs = ctk.CTkTabview(self)
         self.tabs.grid(row=2, column=0, sticky='nsew', padx=18, pady=6)
         self.panels = {}
@@ -263,6 +263,12 @@ class ReferencesApp(ctk.CTk):
         from .procesamiento_panel import ProcesamientoPanel
         self.processing = ProcesamientoPanel(self.tabs.add('Procesar PDFs'), self)
         self.processing.pack(fill='both', expand=True, padx=5, pady=4)
+        from costeo_mvp.app import CosteoPanel
+        from .estimacion_partidas import EstimacionPartidas
+        costeo = CosteoPanel(self.tabs.add('Estimador'))
+        costeo.pack(fill='both', expand=True)
+        self.estimacion_partidas = EstimacionPartidas(costeo.tabs, self)
+        costeo.tabs.add(self.estimacion_partidas, text='Por partidas')
         footer = ctk.CTkFrame(self, fg_color='transparent')
         footer.grid(row=3, column=0, sticky='ew', padx=22, pady=(0, 14))
         footer.grid_columnconfigure(0, weight=1)
