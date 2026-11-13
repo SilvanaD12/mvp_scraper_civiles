@@ -101,9 +101,10 @@ def search_pdf_pages(paths: list[str], query: str, limit: int = 20) -> list[dict
 
 
 class CosteoPanel(ttk.Frame):
-    def __init__(self, parent, *, theme=None) -> None:
+    def __init__(self, parent, *, theme=None, text_style=None) -> None:
         super().__init__(parent)
         self.theme = theme
+        self.text_style = text_style or {}
         self.references = load_references()
         self.pdf_paths: list[str] = []
         self._build_ui()
@@ -112,16 +113,18 @@ class CosteoPanel(ttk.Frame):
         style = ttk.Style(self)
         if self.theme in style.theme_names():
             style.theme_use(self.theme)
-        style.configure("Title.TLabel", font=("Segoe UI", 17, "bold"))
-        style.configure("Subtitle.TLabel", font=("Segoe UI", 10))
-        style.configure("Section.TLabel", font=("Segoe UI", 11, "bold"))
+        family = self.text_style.get("font", ("Segoe UI",))[0]
+        style.configure("Title.TLabel", font=(family, 19, "bold"))
+        style.configure("Subtitle.TLabel", font=(family, 10))
+        style.configure("Section.TLabel", font=(family, 11, "bold"))
+        style.configure("Total.TLabel", font=(family, 28, "bold"))
 
         header = ttk.Frame(self, padding=(20, 16, 20, 8))
         header.pack(fill=X)
-        ttk.Label(header, text="Estimador civil basado en referencias", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(header, text="Estimador de costos", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             header,
-            text="Demo local: consulta de evidencia en PDFs y estimación preliminar por costo referencial/m².",
+            text="Consulta las fuentes de los precios y calcula costos directos preliminares.",
             style="Subtitle.TLabel",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -129,51 +132,61 @@ class CosteoPanel(ttk.Frame):
         tabs.pack(fill=BOTH, expand=True, padx=16, pady=(4, 16))
         self.estimate_tab = ttk.Frame(tabs, padding=18)
         self.search_tab = ttk.Frame(tabs, padding=18)
-        tabs.add(self.estimate_tab, text="Estimar")
+        tabs.add(self.estimate_tab, text="Por área")
         tabs.add(self.search_tab, text="Buscar en PDFs")
         self._build_estimate_tab()
         self._build_search_tab()
 
     def _build_estimate_tab(self) -> None:
+        self.estimate_tab.columnconfigure(0, weight=1, uniform="estimate")
+        self.estimate_tab.columnconfigure(1, weight=2, uniform="estimate")
+        self.estimate_tab.rowconfigure(0, weight=1)
         left = ttk.Frame(self.estimate_tab)
-        left.pack(side=LEFT, fill=Y, padx=(0, 20))
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 18))
         ttk.Label(left, text="Referencia COSTO", style="Section.TLabel").pack(anchor="w")
         self.reference_names = [row["name"] for row in self.references]
         self.reference_var = tk.StringVar(self, value=self.reference_names[0])
         self.reference_box = ttk.Combobox(
-            left, textvariable=self.reference_var, values=self.reference_names, state="readonly", width=48
+            left, textvariable=self.reference_var, values=self.reference_names, state="readonly", width=24
         )
-        self.reference_box.pack(anchor="w", pady=(8, 14))
+        self.reference_box.pack(fill=X, pady=(8, 14))
         self.reference_box.bind("<<ComboboxSelected>>", lambda _event: self._on_reference_changed())
 
         ttk.Label(left, text="Área del proyecto (m²)", style="Section.TLabel").pack(anchor="w")
         self.area_var = tk.StringVar(self, value="540")
         ttk.Entry(left, textvariable=self.area_var, width=18).pack(anchor="w", pady=(8, 14))
         self.area_var.trace_add("write", self._on_estimate_input_changed)
-        ttk.Button(left, text="Calcular referencia", command=self._calculate).pack(anchor="w")
+        ttk.Button(left, text="Calcular referencia", command=self._calculate, style="Primary.TButton" if self.text_style else "TButton").pack(anchor="w")
         ttk.Button(left, text="Exportar resultado a CSV", command=self._export_csv).pack(anchor="w", pady=(8, 0))
 
-        self.reference_info = tk.Text(left, width=58, height=17, wrap="word", state="disabled")
-        self.reference_info.pack(anchor="w", pady=(18, 0))
+        ttk.Label(left, text="Fuente y alcance", style="Section.TLabel").pack(anchor="w", pady=(14, 5))
+        source_box = ttk.Frame(left)
+        source_box.pack(fill=BOTH, expand=True)
+        self.reference_info = tk.Text(source_box, width=26, height=6, wrap="word",
+                                      state="disabled", **self.text_style)
+        source_scroll = ttk.Scrollbar(source_box, orient="vertical", command=self.reference_info.yview)
+        self.reference_info.configure(yscrollcommand=source_scroll.set)
+        source_scroll.pack(side=RIGHT, fill=Y)
+        self.reference_info.pack(side=LEFT, fill=BOTH, expand=True)
 
         right = ttk.Frame(self.estimate_tab)
-        right.pack(side=LEFT, fill=BOTH, expand=True)
+        right.grid(row=0, column=1, sticky="nsew")
         ttk.Label(right, text="Resultado preliminar", style="Section.TLabel").pack(anchor="w")
-        self.total_label = ttk.Label(right, text="S/ —", font=("Segoe UI", 24, "bold"))
+        self.total_label = ttk.Label(right, text="S/ —", style="Total.TLabel")
         self.total_label.pack(anchor="w", pady=(12, 2))
         self.rate_label = ttk.Label(right, text="Costo referencial: —")
         self.rate_label.pack(anchor="w")
         self.coverage_label = ttk.Label(right, text="", wraplength=460)
         self.coverage_label.pack(anchor="w", pady=(10, 12))
-        self.breakdown = ttk.Treeview(right, columns=("line", "amount"), show="headings", height=13)
+        self.breakdown = ttk.Treeview(right, columns=("line", "amount"), show="headings", height=2)
         self.breakdown.heading("line", text="Grupo de partida publicado")
-        self.breakdown.heading("amount", text="Monto escalado (S/)")
+        self.breakdown.heading("amount", text="Monto escalado (S/)", anchor="e")
         self.breakdown.column("line", width=290)
         self.breakdown.column("amount", width=150, anchor="e")
         self.breakdown.pack(fill=BOTH, expand=True)
         ttk.Label(
             right,
-            text="La proyección escala linealmente el costo de una referencia. No calcula metrados estructurales ni reemplaza una cotización profesional.",
+            text="La proyección escala el costo por área y requiere revisión profesional.",
             wraplength=460,
         ).pack(anchor="w", pady=(12, 0))
         self._show_reference_info()
@@ -275,7 +288,7 @@ class CosteoPanel(ttk.Frame):
         ttk.Button(controls, text="Buscar", command=self._search).pack(side=LEFT, padx=(8, 0))
         self.pdf_status = ttk.Label(self.search_tab, text="Aún no has añadido PDFs a la búsqueda.")
         self.pdf_status.pack(anchor="w", pady=(10, 8))
-        self.results = tk.Text(self.search_tab, wrap="word")
+        self.results = tk.Text(self.search_tab, wrap="word", **self.text_style)
         self.results.pack(fill=BOTH, expand=True)
         self.results.insert(
             "1.0",
