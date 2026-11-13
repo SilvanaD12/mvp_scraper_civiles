@@ -16,14 +16,14 @@ from ..services.procesador_pdf import detectar_terminos
 
 from .tema import (
     ACCION, ACCION_HOVER, ACENTO, BORDE, FONDO, FUENTE, PANEL,
-    SECUNDARIO, SUPERFICIE, TEXTO, aplicar_tema, estilo_texto,
+    CONTRASTE, DISPONIBLE, ERROR, SECUNDARIO, SUPERFICIE, TEXTO, aplicar_tema, estilo_texto,
 )
 
 PILOT = 'AS-SM-16-2023-OEC/PERPG-GRMOQ-1'
 
 
 def table(parent, columns, height=5):
-    frame = ctk.CTkFrame(parent, fg_color=FONDO, border_color=BORDE, border_width=1, corner_radius=8)
+    frame = ctk.CTkFrame(parent, fg_color=PANEL, border_color=BORDE, border_width=1, corner_radius=0)
     frame.grid_columnconfigure(0, weight=1)
     frame.grid_rowconfigure(0, weight=1)
     tree = ttk.Treeview(frame, columns=[key for key, _, _ in columns], show='headings', height=height, selectmode='browse')
@@ -76,7 +76,7 @@ class PortalPanel(ctk.CTkFrame):
             self.year.pack(side='left', padx=4)
             app.inputs.append(self.year)
         self.app.button(controls, 'Buscar', self.search, variante='principal').pack(side='left', padx=8)
-        self.scope = ctk.CTkLabel(self, text='Primera página de resultados y documentos.' if source == 'SEACE' else 'Búsqueda pública de obras. Las fichas se guardan para volver a consultarlas.', anchor='w', text_color='#9DB1C6')
+        self.scope = ctk.CTkLabel(self, text='Resultados · Escribe un término y pulsa Buscar', anchor='w', text_color=SECUNDARIO)
         self.scope.grid(row=1, column=0, sticky='ew')
         cols = [('code', 'Código INFOBRAS', 130), ('name', 'Obra', 620), ('cui', 'CUI', 110)] if source == 'INFOBRAS' else [
             ('code', 'Nomenclatura', 270), ('name', 'Descripción del procedimiento', 450), ('entity', 'Entidad', 240), ('date', 'Publicación', 130)]
@@ -84,17 +84,23 @@ class PortalPanel(ctk.CTkFrame):
         frame.grid(row=2, column=0, sticky='nsew', pady=4)
         actions = ctk.CTkFrame(self, fg_color='transparent')
         actions.grid(row=3, column=0, sticky='ew', pady=5)
-        app.button(actions, 'Consultar selección', self.open_selected).pack(side='left', padx=(0, 8))
+        self.consultar = app.button(actions, 'Consultar selección', self.open_selected)
+        self.consultar.pack(side='left', padx=(0, 8))
+        self.results.bind('<<TreeviewSelect>>', self.actualizar_acciones)
+        self.term.bind('<Return>', lambda _event: self.search())
         if source == 'INFOBRAS':
             self.code = ctk.CTkEntry(actions, width=110, placeholder_text='Código')
             self.code.insert(0, '507544')
             self.code.pack(side='left', padx=4)
             app.inputs.append(self.code)
             app.button(actions, 'Consultar código', self.open_code).pack(side='left', padx=4)
-            app.button(actions, 'Página anterior', lambda: self.page(-1)).pack(side='left', padx=4)
-            app.button(actions, 'Siguiente página', lambda: self.page(1)).pack(side='left', padx=4)
+            self.anterior = app.button(actions, 'Página anterior', lambda: self.page(-1))
+            self.anterior.pack(side='left', padx=4)
+            self.siguiente = app.button(actions, 'Siguiente página', lambda: self.page(1))
+            self.siguiente.pack(side='left', padx=4)
         else:
-            app.button(actions, 'Seleccionar caso piloto', self.select_pilot).pack(side='left', padx=4)
+            self.piloto = app.button(actions, 'Seleccionar caso piloto', self.select_pilot)
+            self.piloto.pack(side='left', padx=4)
         self.info = ctk.CTkTextbox(self, height=88, wrap='word', fg_color=FONDO, border_color=BORDE, border_width=1, padx=10, pady=8)
         self.info.grid(row=4, column=0, sticky='nsew', pady=(2, 5))
         set_text(self.info, 'Seleccione un resultado para ver su ficha y documentos.' +
@@ -103,11 +109,34 @@ class PortalPanel(ctk.CTkFrame):
         frame.grid(row=5, column=0, sticky='nsew', pady=4)
         bottom = ctk.CTkFrame(self, fg_color='transparent')
         bottom.grid(row=6, column=0, sticky='ew', pady=4)
-        app.button(bottom, 'Descargar documento', self.download, variante='principal').pack(side='left', padx=(0, 8))
-        app.button(bottom, 'Exportar ficha JSON', self.export).pack(side='left', padx=4)
+        self.descargar = app.button(bottom, 'Descargar documento', self.download, variante='principal')
+        self.descargar.pack(side='left', padx=(0, 8))
+        self.exportar = app.button(bottom, 'Exportar ficha JSON', self.export)
+        self.exportar.pack(side='left', padx=4)
         self.solo_costos = ctk.CTkCheckBox(bottom, text='Solo títulos de costos', command=self.filtrar_documentos)
         self.solo_costos.pack(side='left', padx=12)
         app.inputs.append(self.solo_costos)
+        self.documentos_estado = ctk.CTkLabel(bottom, text='Abre una ficha para ver sus documentos',
+                                              text_color=SECUNDARIO)
+        self.documentos_estado.pack(side='right', padx=8)
+        self.documents.bind('<<TreeviewSelect>>', self.actualizar_acciones)
+
+    def actualizar_acciones(self, _event=None):
+        def estado(disponible):
+            return 'normal' if disponible and not self.app.busy else 'disabled'
+
+        self.consultar.configure(state=estado(self.results.selection()))
+        self.descargar.configure(state=estado(self.documents.selection() and self.detail_data))
+        self.exportar.configure(state=estado(self.detail_data))
+        self.solo_costos.configure(state=estado(self.detail_data))
+        datos = self.search_data or {}
+        registros = datos.get('registros', [])
+        if self.source == 'INFOBRAS':
+            pagina = datos.get('pagina', 1)
+            self.anterior.configure(state=estado(pagina > 1))
+            self.siguiente.configure(state=estado(pagina * 20 < datos.get('total', 0)))
+        else:
+            self.piloto.configure(state=estado(sum(r.get('nomenclatura') == PILOT for r in registros) == 1))
 
     def search(self):
         term = self.term.get().strip()
@@ -126,7 +155,7 @@ class PortalPanel(ctk.CTkFrame):
 
     def clear_detail(self):
         self.detail_data = None
-        replace_rows(self.documents, [])
+        self.filtrar_documentos()
         set_text(self.info, 'Consulte una ficha para ver el detalle.')
 
     def show_search(self, data, saved=False):
@@ -142,11 +171,12 @@ class PortalPanel(ctk.CTkFrame):
             values = [(r['nomenclatura'], r['descripcion'], r['entidad'], r['publicado_en']) for r in rows]
             scope = f"{data['termino']} / {data['anio']} · {len(rows)} resultados mostrados · Solo primera página · {data.get('paginacion') or ''}"
         replace_rows(self.results, values)
+        self.actualizar_acciones()
         self.scope.configure(text=('GUARDADO · ' if saved else 'Consulta realizada · ') + scope)
         if not rows:
             set_text(self.info, 'No se encontraron resultados en esta consulta. Cambie el término o el año.')
         aviso = f"{data['aviso']} " if data.get('desde_historial') else ''
-        self.app.status.configure(text=f"{aviso}{len(rows)} resultados. Consulta {'recuperada' if saved else 'guardada'} · {data['extraido_en']}")
+        self.app.status.configure(text_color=DISPONIBLE, text=f"{aviso}{len(rows)} resultados. Consulta {'recuperada' if saved else 'guardada'} · {data['extraido_en']}")
 
     def page(self, delta):
         if not self.search_data:
@@ -210,6 +240,9 @@ class PortalPanel(ctk.CTkFrame):
         replace_rows(self.documents, [(d.get('numero', i+1), d.get('documento', d.get('nombre')),
             ', '.join(detectar_terminos(d.get('documento', d.get('nombre', '')))) or 'Sin señal: revisar contenido',
             d.get('etapa', d.get('extension', '')), d.get('publicado_en', '')) for i, d in enumerate(self.visible_docs)])
+        mensaje = f'{len(self.visible_docs)} de {len(docs)} documentos' if self.detail_data else 'Abre una ficha para ver sus documentos'
+        self.documentos_estado.configure(text=mensaje)
+        self.actualizar_acciones()
 
     def download(self):
         selected = self.documents.selection()
@@ -233,7 +266,7 @@ class PortalPanel(ctk.CTkFrame):
 
 class ReferencesApp(ctk.CTk):
     def __init__(self, settings, service=None):
-        ctk.set_appearance_mode('dark')
+        ctk.set_appearance_mode('light')
         super().__init__(fg_color=FONDO)
         self.settings = settings
         self.service = service or ReferencesService(settings)
@@ -247,25 +280,23 @@ class ReferencesApp(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
         aplicar_tema(self)
-        header = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=12, border_width=1, border_color=BORDE)
+        header = ctk.CTkFrame(self, fg_color='transparent')
         header.grid(row=0, column=0, sticky='ew', padx=22, pady=(18, 10))
         marca = ctk.CTkFrame(header, fg_color='transparent')
-        marca.pack(side='left', padx=18, pady=13)
+        marca.pack(side='left', pady=2)
         ctk.CTkLabel(marca, text='CENITEG', text_color=ACENTO, height=18,
                      font=ctk.CTkFont(family=FUENTE, size=12, weight='bold')).pack(anchor='w')
         ctk.CTkLabel(marca, text='Referencias civiles', text_color=TEXTO,
-                     font=ctk.CTkFont(family=FUENTE, size=27, weight='bold')).pack(anchor='w')
-        ctk.CTkLabel(marca, text='Consulta obras, revisa documentos y estima costos preliminares.',
-                     text_color=SECUNDARIO).pack(anchor='w')
-        self.button(header, 'Abrir carpeta de datos', lambda: self.open_path(settings.data_dir)).pack(side='right', padx=18)
-        self.tabs = ctk.CTkTabview(self, anchor='nw', fg_color=PANEL, corner_radius=10,
+                     font=ctk.CTkFont(family=FUENTE, size=22, weight='bold')).pack(anchor='w')
+        self.button(header, 'Abrir carpeta de datos', lambda: self.open_path(settings.data_dir)).pack(side='right')
+        self.tabs = ctk.CTkTabview(self, anchor='nw', fg_color=PANEL, corner_radius=4,
                                    border_width=1, border_color=BORDE,
                                    segmented_button_fg_color=SUPERFICIE,
-                                   segmented_button_selected_color=ACCION,
-                                   segmented_button_selected_hover_color=ACCION_HOVER,
+                                   segmented_button_selected_color='#C9DCEF',
+                                   segmented_button_selected_hover_color='#B8D1E8',
                                    segmented_button_unselected_color=SUPERFICIE,
                                    segmented_button_unselected_hover_color=BORDE,
-                                   text_color=TEXTO)
+                                   text_color=(TEXTO, TEXTO))
         self.tabs.grid(row=2, column=0, sticky='nsew', padx=22, pady=(0, 8))
         self.panels = {}
         for source in ('INFOBRAS', 'SEACE'):
@@ -286,13 +317,14 @@ class ReferencesApp(ctk.CTk):
         footer = ctk.CTkFrame(self, fg_color='transparent')
         footer.grid(row=3, column=0, sticky='ew', padx=22, pady=(0, 14))
         footer.grid_columnconfigure(0, weight=1)
-        self.status = ctk.CTkLabel(footer, text='Listo. Empiece con INFOBRAS 507544 o busque CAMPAMENTOS en SEACE (2023).', anchor='w', wraplength=760, text_color=SECUNDARIO)
+        self.status = ctk.CTkLabel(footer, text='Listo', anchor='w', wraplength=760, text_color=SECUNDARIO)
         self.status.grid(row=0, column=0, sticky='w')
         self.button(footer, 'Abrir última descarga', self.open_last_download).grid(row=0, column=1, padx=5)
         self.progress = ctk.CTkProgressBar(footer, mode='indeterminate', height=4, fg_color=BORDE, progress_color=ACENTO)
         self.progress.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(4, 0))
         self.progress.grid_remove()
         self.refresh_history()
+        self.actualizar_acciones()
         self.after(100, self._poll)
         self.protocol('WM_DELETE_WINDOW', self._close)
 
@@ -300,11 +332,12 @@ class ReferencesApp(ctk.CTk):
         fondo, hover = {
             'principal': (ACCION, ACCION_HOVER),
             'secundaria': (SUPERFICIE, BORDE),
-            'peligro': ('#482B3B', '#63354B'),
+            'peligro': ('#F5E4E4', '#ECD1D1'),
         }[variante]
         widget = ctk.CTkButton(parent, text=text, command=command, height=32,
-                               width=86, corner_radius=7, fg_color=fondo, hover_color=hover,
-                               text_color=TEXTO, text_color_disabled=SECUNDARIO,
+                               width=86, corner_radius=4, fg_color=fondo, hover_color=hover,
+                               text_color={'principal': CONTRASTE, 'peligro': ERROR}.get(variante, TEXTO),
+                               text_color_disabled='#778595',
                                font=ctk.CTkFont(family=FUENTE, size=13))
         if registrar:
             self.buttons.append(widget)
@@ -320,17 +353,34 @@ class ReferencesApp(ctk.CTk):
         bar = ctk.CTkFrame(parent, fg_color='transparent')
         bar.grid(row=2, column=0, sticky='ew', padx=8, pady=8)
         self.button(bar, 'Actualizar historial', self.refresh_history).pack(side='left', padx=4)
-        self.button(bar, 'Reabrir selección', self.reopen, variante='principal').pack(side='left', padx=4)
-        self.button(bar, 'Procesar descarga', self.process_saved).pack(side='left', padx=4)
-        self.button(bar, 'Eliminar descarga', self.delete_saved_download, variante='peligro').pack(side='left', padx=4)
+        self.reabrir = self.button(bar, 'Reabrir selección', self.reopen, variante='principal')
+        self.reabrir.pack(side='left', padx=4)
+        self.procesar_guardado = self.button(bar, 'Procesar descarga', self.process_saved)
+        self.procesar_guardado.pack(side='left', padx=4)
+        self.eliminar_guardado = self.button(bar, 'Eliminar descarga', self.delete_saved_download, variante='peligro')
+        self.eliminar_guardado.pack(side='left', padx=4)
+        self.historial_estado = ctk.CTkLabel(bar, text_color=SECUNDARIO)
+        self.historial_estado.pack(side='right', padx=8)
         self.history_text = ctk.CTkTextbox(parent, wrap='word', fg_color=FONDO, border_color=BORDE, border_width=1, padx=10, pady=8)
         self.history_text.grid(row=3, column=0, sticky='nsew', padx=8, pady=(0, 8))
         self.history.bind('<<TreeviewSelect>>', self.show_history_payload)
+        self.history.bind('<<TreeviewSelect>>', self.actualizar_acciones_historial, add='+')
 
     def refresh_history(self):
         self.history_rows = self.service.store.recent()
         replace_rows(self.history, [(r['source'], r['kind'], r['subject'], r['created_at']) for r in self.history_rows])
-        set_text(self.history_text, 'Seleccione un registro.')
+        self.historial_estado.configure(text=f'{len(self.history_rows)} registros')
+        set_text(self.history_text, 'Selecciona un registro para ver el detalle.' if self.history_rows
+                 else 'Aún no hay registros. Busca una obra o descarga un documento para empezar.')
+        self.actualizar_acciones_historial()
+
+    def actualizar_acciones_historial(self, _event=None):
+        seleccion = self.history.selection()
+        fila = self.history_rows[int(seleccion[0])] if seleccion else None
+        self.reabrir.configure(state='normal' if fila and not self.busy else 'disabled')
+        estado = 'normal' if fila and fila['kind'] == 'descarga' and not self.busy else 'disabled'
+        self.procesar_guardado.configure(state=estado)
+        self.eliminar_guardado.configure(state=estado)
 
     def history_payload(self):
         selected = self.history.selection()
@@ -413,7 +463,7 @@ class ReferencesApp(ctk.CTk):
         if self.last_download and not self.last_download.is_file():
             self.last_download = None
         self.processing.actualizar()
-        self.status.configure(text='Descarga eliminada y lista actualizada.')
+        self.status.configure(text='Descarga eliminada y lista actualizada.', text_color=DISPONIBLE)
         if resultado.avisos:
             self.notice('\n'.join(resultado.avisos))
 
@@ -423,7 +473,8 @@ class ReferencesApp(ctk.CTk):
         self.busy = True
         for widget in self.buttons + self.inputs:
             widget.configure(state='disabled')
-        self.status.configure(text=label)
+        self.status.configure(text=label, text_color=ACENTO)
+        self.actualizar_acciones()
         self.progress.grid()
         self.progress.start()
 
@@ -455,12 +506,20 @@ class ReferencesApp(ctk.CTk):
             except Exception as error:
                 logging.exception('Fallo mostrando el resultado')
                 self.show_error(error)
+            finally:
+                self.actualizar_acciones()
         self.after(100, self._poll)
+
+    def actualizar_acciones(self):
+        for panel in self.panels.values():
+            panel.actualizar_acciones()
+        self.actualizar_acciones_historial()
+        self.processing.actualizar_acciones()
 
     def download_complete(self, data):
         info = data['descarga']
         self.last_download = Path(info['ruta_local'])
-        self.status.configure(text=f"Descargado: {info['documento']} · {info['tamanio_bytes']:,} bytes. Archivo, procedencia y huella SHA-256 guardados.")
+        self.status.configure(text_color=DISPONIBLE, text=f"Descargado: {info['documento']} · {info['tamanio_bytes']:,} bytes. Archivo, procedencia y huella SHA-256 guardados.")
         if self.processing.automatico.get():
             self.processing.procesar_descarga(data)
 
@@ -481,7 +540,7 @@ class ReferencesApp(ctk.CTk):
         messagebox.showinfo('Referencias civiles', text, parent=self)
 
     def show_error(self, error):
-        self.status.configure(text='La operación no terminó. Los resultados anteriores siguen disponibles.')
+        self.status.configure(text=f'No se pudo completar: {str(error)[:220]}', text_color=ERROR)
         messagebox.showerror('No se pudo completar la operación', str(error)[:650], parent=self)
 
     def _close(self):

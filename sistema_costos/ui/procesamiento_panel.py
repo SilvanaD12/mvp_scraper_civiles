@@ -14,7 +14,9 @@ from ..services.revision_candidatos import RevisionCandidatosService
 from ..services.consulta_resultados import ConsultaResultados
 
 
-from .tema import BORDE, FONDO, SECUNDARIO, SUPERFICIE, TEXTO
+from costeo_mvp.partidas import precio_partida
+
+from .tema import BORDE, DISPONIBLE, PANEL, SECUNDARIO, SUPERFICIE, TEXTO
 
 
 class ProcesamientoPanel(ctk.CTkFrame):
@@ -45,9 +47,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
         app.button(barra, "Cargar PDF", self.cargar).pack(
             side="left", padx=4
         )
-        app.button(barra, "Procesar", self.procesar, variante="principal").pack(
-            side="left", padx=4
-        )
+        self.boton_procesar = app.button(barra, "Procesar", self.procesar, variante="principal")
+        self.boton_procesar.pack(side="left", padx=4)
         app.button(barra, "Actualizar", self.actualizar).pack(
             side="left", padx=4
         )
@@ -115,6 +116,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
             filtros,
             values=["Hallazgos sin incorporar", "Datos guardados"],
             width=215, fg_color=SUPERFICIE, button_color=BORDE,
+            text_color=TEXTO, button_hover_color=SECUNDARIO,
             command=lambda _: self.actualizar_resultados(),
         )
         self.vista.pack(side="left", padx=4)
@@ -123,6 +125,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
             filtros,
             values=["Documento seleccionado", "Todos los documentos"],
             width=200, fg_color=SUPERFICIE, button_color=BORDE,
+            text_color=TEXTO, button_hover_color=SECUNDARIO,
             command=lambda _: self.actualizar_resultados(),
         )
         self.ambito.pack(side="left", padx=4)
@@ -216,7 +219,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         )
         frame.grid(row=4, column=0, sticky="nsew", pady=4)
         self.estado_vacio = ctk.CTkLabel(
-            frame, text="", wraplength=600, fg_color=FONDO,
+            frame, text="", wraplength=600, fg_color=PANEL,
             text_color=SECUNDARIO,
         )
 
@@ -259,6 +262,9 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.contador.grid(
             row=6, column=0, sticky="ew", padx=5, pady=3
         )
+
+        self.ayuda_acciones = ctk.CTkLabel(self, text="", text_color=SECUNDARIO, anchor="w")
+        self.ayuda_acciones.grid(row=7, column=0, sticky="ew", padx=5)
 
         self.actualizar()
 
@@ -398,7 +404,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         self.app.tabs.set("Procesar PDFs")
         if lote := resultado.get("lote"):
-            self.app.status.configure(text=(
+            self.app.status.configure(text_color=DISPONIBLE, text=(
                 f"{lote['archivo']} · {lote['documentos_procesados']} PDFs procesados · "
                 f"{lote['candidatos']} hallazgos."
             ))
@@ -406,7 +412,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
                 self.app.notice("El archivo se procesó con avisos:\n" + "\n".join(lote["avisos"][:5]))
             return
         self.app.status.configure(
-            text=(
+            text_color=DISPONIBLE, text=(
                 f"Procesado: {resultado['nombre']} · "
                 f"{resultado['candidatos']} hallazgos."
             )
@@ -442,6 +448,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
             and not self.actual
         ):
             self.consulta.cancelar()
+            self.consulta.guardadas = self.vista.get() == "Datos guardados"
             self.consulta.filas = {}
             self.resultados.delete(*self.resultados.get_children())
             self.contar()
@@ -506,19 +513,18 @@ class ProcesamientoPanel(ctk.CTkFrame):
             if doc and not self.actual["candidatos"]:
                 texto = "No se encontraron datos en este documento."
             elif any(filtros.values()):
-                texto = "No hay resultados con estos filtros."
+                texto = "Sin coincidencias. Ajusta los filtros o pulsa Limpiar."
             elif self.consulta.guardadas:
-                texto = "No hay datos guardados en esta vista."
+                texto = "Sin datos guardados. Marca y guarda hallazgos para consultarlos aquí."
             elif doc:
                 texto = "No hay hallazgos pendientes. Consulta Datos guardados."
             else:
-                texto = "No hay hallazgos pendientes."
+                texto = "Sin hallazgos pendientes. Carga un PDF o revisa Datos guardados."
             self.mostrar_vacio(texto)
 
     def mostrar_vacio(self, texto):
         self.estado_vacio.configure(text=texto)
         self.estado_vacio.place(relx=.5, rely=.5, anchor="center")
-        self.mensaje("")
 
     def enviar_estimador(self):
         if getattr(self.app, "busy", False):
@@ -533,24 +539,42 @@ class ProcesamientoPanel(ctk.CTkFrame):
             self.app.tabs.set("Estimador")
             estimador.master.select(estimador)
 
-    def contar(self):
-        self.boton_estimar.configure(
-            state="normal" if self.consulta.guardadas and self.consulta.filas else "disabled"
-        )
-        deshabilitar = (
-            self.consulta.guardadas
-            or getattr(self.app, "busy", False)
-            or not self.consulta.filas
-        )
-        for boton in (
-            self.boton_todos,
-            self.boton_guardar,
-            self.boton_cancelar,
-        ):
-            boton.configure(
-                state="disabled" if deshabilitar else "normal"
-            )
+    def actualizar_acciones(self):
+        ocupado = self.app.busy
+        pendientes = not self.consulta.guardadas
+        marcados = bool(self.consulta.marcados)
+        hay_filas = bool(self.consulta.filas)
 
+        def estado(disponible):
+            return "normal" if disponible and not ocupado else "disabled"
+
+        self.boton_procesar.configure(state=estado(self.ruta_pendiente or self.actual))
+        self.boton_todos.configure(state=estado(pendientes and hay_filas))
+        self.boton_guardar.configure(state=estado(pendientes and marcados))
+        self.boton_cancelar.configure(state=estado(pendientes and marcados))
+
+        seleccion = self.resultados.selection()
+        fila = self.consulta.filas.get(seleccion[0]) if seleccion else None
+        puede_estimar = False
+        ayuda = ""
+        if self.consulta.guardadas and hay_filas:
+            ayuda = "Selecciona una partida guardada para estimar."
+            if fila:
+                try:
+                    precio_partida(fila)
+                except ValueError as error:
+                    ayuda = str(error)
+                else:
+                    puede_estimar = True
+                    ayuda = "Partida seleccionada. Pulsa Enviar al estimador."
+        elif pendientes and hay_filas and not marcados:
+            ayuda = "Marca las filas que quieres guardar en la columna Elegir."
+
+        self.boton_estimar.configure(state=estado(puede_estimar))
+        self.ayuda_acciones.configure(text=ayuda)
+
+    def contar(self):
+        self.actualizar_acciones()
         estado = (
             "Datos guardados"
             if self.consulta.guardadas
@@ -641,6 +665,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.actualizar_resultados()
 
     def resumir_resultado(self, _evento=None):
+        self.actualizar_acciones()
         seleccion = self.resultados.selection()
         fila = self.consulta.filas.get(seleccion[0]) if seleccion else None
         if fila:

@@ -30,7 +30,9 @@ class EstimacionPartidas(ttk.Frame):
             ("fuente", "Fuente", 110),
         ])
         frame.pack(fill="both", expand=True)
-        ttk.Button(self, text="Quitar partida", command=self.quitar).pack(anchor="w", pady=6)
+        self.boton_quitar = ttk.Button(self, text="Quitar partida", command=self.quitar, state="disabled")
+        self.boton_quitar.pack(anchor="w", pady=6)
+        self.tabla.bind("<<TreeviewSelect>>", self.actualizar_acciones)
         self.total = ttk.Label(self, text="Sin partidas en el cálculo.", style="Total.TLabel")
         self.total.pack(anchor="w")
         ttk.Label(
@@ -68,6 +70,9 @@ class EstimacionPartidas(ttk.Frame):
         self.actualizar()
         return True
 
+    def actualizar_acciones(self, _event=None):
+        self.boton_quitar.configure(state="normal" if self.tabla.selection() else "disabled")
+
     def quitar(self):
         seleccion = self.tabla.selection()
         if seleccion:
@@ -82,6 +87,7 @@ class EstimacionPartidas(ttk.Frame):
                 fila["parcial"], fila["moneda"], fila["documento_nombre"],
                 fila["pagina"], fila["fuente"],
             ))
+        self.actualizar_acciones()
         subtotales = subtotales_por_moneda(self.partidas.values())
         texto = "  ·  ".join(f"{moneda} {importe:,.2f}" for moneda, importe in sorted(subtotales.items()))
         self.total.configure(text=f"Subtotal por moneda: {texto}" if texto else "Sin partidas en el cálculo.")
