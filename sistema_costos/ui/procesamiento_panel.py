@@ -235,18 +235,19 @@ class ProcesamientoPanel(ctk.CTkFrame):
         pie = ctk.CTkFrame(self, fg_color="transparent")
         pie.grid(row=5, column=0, sticky="ew", pady=5)
 
-        self.boton_todos = app.button(
-            pie, "Seleccionar visibles", self.seleccionar_todos
-        )
-        self.boton_todos.pack(side="left", padx=4)
-
+        self.acciones_hallazgos = ctk.CTkFrame(pie, fg_color="transparent")
         self.boton_guardar = app.button(
-            pie, "Guardar seleccionados", self.guardar, variante="principal"
+            self.acciones_hallazgos, "Guardar selección", self.guardar, variante="principal"
         )
         self.boton_guardar.pack(side="left", padx=4)
 
+        self.boton_todos = app.button(
+            self.acciones_hallazgos, "Marcar visibles", self.seleccionar_todos
+        )
+        self.boton_todos.pack(side="left", padx=4)
+
         self.boton_cancelar = app.button(
-            pie, "Cancelar selección", self.cancelar
+            self.acciones_hallazgos, "Desmarcar todo", self.cancelar
         )
         self.boton_cancelar.pack(side="left", padx=4)
 
@@ -254,7 +255,6 @@ class ProcesamientoPanel(ctk.CTkFrame):
             pie, "Enviar al estimador", self.enviar_estimador,
             variante="principal", registrar=False,
         )
-        self.boton_estimar.pack(side="left", padx=4)
 
         self.contador = ctk.CTkLabel(
             self, text="", anchor="w", text_color=TEXTO
@@ -544,6 +544,13 @@ class ProcesamientoPanel(ctk.CTkFrame):
         pendientes = not self.consulta.guardadas
         marcados = bool(self.consulta.marcados)
         hay_filas = bool(self.consulta.filas)
+
+        if pendientes:
+            self.boton_estimar.pack_forget()
+            self.acciones_hallazgos.pack(side="left")
+        else:
+            self.acciones_hallazgos.pack_forget()
+            self.boton_estimar.pack(side="left", padx=4)
 
         def estado(disponible):
             return "normal" if disponible and not ocupado else "disabled"

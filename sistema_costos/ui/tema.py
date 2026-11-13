@@ -3,18 +3,20 @@
 import sys
 from tkinter import ttk
 
-FONDO = "#F3F5F7"
-PANEL = "#FFFFFF"
-SUPERFICIE = "#E8EDF2"
-BORDE = "#BAC7D3"
-TEXTO = "#1B2B3A"
-SECUNDARIO = "#4F6173"
-ACENTO = "#174A78"
-ACCION = "#245B8D"
-ACCION_HOVER = "#194A78"
-CONTRASTE = "#FFFFFF"
-DISPONIBLE = "#276047"
-ERROR = "#972C30"
+FONDO = "#222528"
+PANEL = "#2A2E31"
+SUPERFICIE = "#383E42"
+BORDE = "#56616A"
+TEXTO = "#E7EAED"
+SECUNDARIO = "#BEC7CF"
+ACENTO = "#ADD3F1"
+ACCION = "#305A7B"
+ACCION_HOVER = "#3A678A"
+CONTRASTE = "#F2F5F7"
+FONDO_DESHABILITADO = "#35393D"
+TEXTO_DESHABILITADO = "#B4BCC3"
+DISPONIBLE = "#A8CFB4"
+ERROR = "#F2B9B9"
 FUENTE = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
 
 
@@ -33,7 +35,7 @@ def aplicar_tema(ventana):
     for orientacion in ("Horizontal", "Vertical"):
         estilo.configure(f"{orientacion}.TScrollbar", background=BORDE, troughcolor=FONDO,
                          arrowcolor=SECUNDARIO, borderwidth=0, arrowsize=12)
-        estilo.map(f"{orientacion}.TScrollbar", background=[("active", "#7A90A6")])
+        estilo.map(f"{orientacion}.TScrollbar", background=[("active", "#73808B")])
     estilo.configure("TNotebook", borderwidth=0, tabmargins=(0, 0, 0, 5))
     estilo.configure("TNotebook.Tab", background=SUPERFICIE, foreground=SECUNDARIO,
                      padding=(15, 8), borderwidth=0)
@@ -42,8 +44,8 @@ def aplicar_tema(ventana):
     estilo.configure("TButton", padding=(10, 6), background=SUPERFICIE)
     estilo.configure("Primary.TButton", background=ACCION, foreground=CONTRASTE)
     for nombre in ("TButton", "Primary.TButton"):
-        estilo.map(nombre, background=[("disabled", PANEL), ("pressed", BORDE), ("active", ACCION_HOVER)],
-                   foreground=[("disabled", SECUNDARIO), ("pressed", TEXTO), ("active", CONTRASTE)])
+        estilo.map(nombre, background=[("disabled", FONDO_DESHABILITADO), ("pressed", ACCION), ("active", ACCION_HOVER)],
+                   foreground=[("disabled", TEXTO_DESHABILITADO), ("pressed", CONTRASTE), ("active", CONTRASTE)])
     estilo.configure("TEntry", fieldbackground=FONDO, insertcolor=TEXTO, padding=(8, 5))
     estilo.configure("TCombobox", fieldbackground=FONDO, background=SUPERFICIE,
                      arrowcolor=ACENTO, padding=(8, 5))

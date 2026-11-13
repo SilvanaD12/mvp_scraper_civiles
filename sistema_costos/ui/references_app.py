@@ -16,10 +16,23 @@ from ..services.procesador_pdf import detectar_terminos
 
 from .tema import (
     ACCION, ACCION_HOVER, ACENTO, BORDE, FONDO, FUENTE, PANEL,
-    CONTRASTE, DISPONIBLE, ERROR, SECUNDARIO, SUPERFICIE, TEXTO, aplicar_tema, estilo_texto,
+    CONTRASTE, DISPONIBLE, ERROR, FONDO_DESHABILITADO, SECUNDARIO,
+    SUPERFICIE, TEXTO, TEXTO_DESHABILITADO, aplicar_tema, estilo_texto,
 )
 
 PILOT = 'AS-SM-16-2023-OEC/PERPG-GRMOQ-1'
+
+
+class BotonAccion(ctk.CTkButton):
+    def __init__(self, parent, *, fg_color, **kwargs):
+        self.fondo_activo = fg_color
+        super().__init__(parent, fg_color=fg_color, **kwargs)
+
+    def configure(self, require_redraw=False, **kwargs):
+        estado = kwargs.get("state")
+        if estado is not None:
+            kwargs["fg_color"] = FONDO_DESHABILITADO if estado == "disabled" else self.fondo_activo
+        super().configure(require_redraw=require_redraw, **kwargs)
 
 
 def table(parent, columns, height=5):
@@ -266,7 +279,7 @@ class PortalPanel(ctk.CTkFrame):
 
 class ReferencesApp(ctk.CTk):
     def __init__(self, settings, service=None):
-        ctk.set_appearance_mode('light')
+        ctk.set_appearance_mode('dark')
         super().__init__(fg_color=FONDO)
         self.settings = settings
         self.service = service or ReferencesService(settings)
@@ -292,11 +305,11 @@ class ReferencesApp(ctk.CTk):
         self.tabs = ctk.CTkTabview(self, anchor='nw', fg_color=PANEL, corner_radius=4,
                                    border_width=1, border_color=BORDE,
                                    segmented_button_fg_color=SUPERFICIE,
-                                   segmented_button_selected_color='#C9DCEF',
-                                   segmented_button_selected_hover_color='#B8D1E8',
+                                   segmented_button_selected_color=ACCION,
+                                   segmented_button_selected_hover_color=ACCION_HOVER,
                                    segmented_button_unselected_color=SUPERFICIE,
                                    segmented_button_unselected_hover_color=BORDE,
-                                   text_color=(TEXTO, TEXTO))
+                                   text_color=TEXTO)
         self.tabs.grid(row=2, column=0, sticky='nsew', padx=22, pady=(0, 8))
         self.panels = {}
         for source in ('INFOBRAS', 'SEACE'):
@@ -332,12 +345,12 @@ class ReferencesApp(ctk.CTk):
         fondo, hover = {
             'principal': (ACCION, ACCION_HOVER),
             'secundaria': (SUPERFICIE, BORDE),
-            'peligro': ('#F5E4E4', '#ECD1D1'),
+            'peligro': ('#563B40', '#68464C'),
         }[variante]
-        widget = ctk.CTkButton(parent, text=text, command=command, height=32,
+        widget = BotonAccion(parent, text=text, command=command, height=32,
                                width=86, corner_radius=4, fg_color=fondo, hover_color=hover,
                                text_color={'principal': CONTRASTE, 'peligro': ERROR}.get(variante, TEXTO),
-                               text_color_disabled='#778595',
+                               text_color_disabled=TEXTO_DESHABILITADO,
                                font=ctk.CTkFont(family=FUENTE, size=13))
         if registrar:
             self.buttons.append(widget)
