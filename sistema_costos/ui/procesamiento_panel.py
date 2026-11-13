@@ -14,6 +14,9 @@ from ..services.revision_candidatos import RevisionCandidatosService
 from ..services.consulta_resultados import ConsultaResultados
 
 
+from .tema import BORDE, FONDO, SECUNDARIO, SUPERFICIE, TEXTO
+
+
 class ProcesamientoPanel(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent, fg_color="transparent")
@@ -42,7 +45,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         app.button(barra, "Cargar PDF", self.cargar).pack(
             side="left", padx=4
         )
-        app.button(barra, "Procesar", self.procesar).pack(
+        app.button(barra, "Procesar", self.procesar, variante="principal").pack(
             side="left", padx=4
         )
         app.button(barra, "Actualizar", self.actualizar).pack(
@@ -111,7 +114,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.vista = ctk.CTkOptionMenu(
             filtros,
             values=["Hallazgos sin incorporar", "Datos guardados"],
-            width=215,
+            width=215, fg_color=SUPERFICIE, button_color=BORDE,
             command=lambda _: self.actualizar_resultados(),
         )
         self.vista.pack(side="left", padx=4)
@@ -119,7 +122,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.ambito = ctk.CTkOptionMenu(
             filtros,
             values=["Documento seleccionado", "Todos los documentos"],
-            width=200,
+            width=200, fg_color=SUPERFICIE, button_color=BORDE,
             command=lambda _: self.actualizar_resultados(),
         )
         self.ambito.pack(side="left", padx=4)
@@ -213,8 +216,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
         )
         frame.grid(row=4, column=0, sticky="nsew", pady=4)
         self.estado_vacio = ctk.CTkLabel(
-            frame, text="", wraplength=600, fg_color="#17232F",
-            text_color="#E1EAF2",
+            frame, text="", wraplength=600, fg_color=FONDO,
+            text_color=SECUNDARIO,
         )
 
         self.resultados.column(
@@ -235,7 +238,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         self.boton_todos.pack(side="left", padx=4)
 
         self.boton_guardar = app.button(
-            pie, "Guardar seleccionados", self.guardar
+            pie, "Guardar seleccionados", self.guardar, variante="principal"
         )
         self.boton_guardar.pack(side="left", padx=4)
 
@@ -244,14 +247,14 @@ class ProcesamientoPanel(ctk.CTkFrame):
         )
         self.boton_cancelar.pack(side="left", padx=4)
 
-        self.boton_estimar = ctk.CTkButton(
-            pie, text="Enviar al estimador", command=self.enviar_estimador,
-            height=30,
+        self.boton_estimar = app.button(
+            pie, "Enviar al estimador", self.enviar_estimador,
+            variante="principal", registrar=False,
         )
         self.boton_estimar.pack(side="left", padx=4)
 
         self.contador = ctk.CTkLabel(
-            self, text="", anchor="w"
+            self, text="", anchor="w", text_color=TEXTO
         )
         self.contador.grid(
             row=6, column=0, sticky="ew", padx=5, pady=3

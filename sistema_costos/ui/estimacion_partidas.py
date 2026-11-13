@@ -12,8 +12,9 @@ class EstimacionPartidas(ttk.Frame):
 
         self.app = app
         self.partidas = {}
+        ttk.Label(self, text="Partidas de la estimación", style="Section.TLabel").pack(anchor="w", pady=(0, 4))
         ttk.Label(
-            self,
+            self, style="Muted.TLabel",
             text="En Procesar PDFs → Datos guardados, elige una partida y pulsa Enviar al estimador.",
             wraplength=750,
         ).pack(anchor="w", pady=(0, 8))
@@ -30,7 +31,7 @@ class EstimacionPartidas(ttk.Frame):
         ])
         frame.pack(fill="both", expand=True)
         ttk.Button(self, text="Quitar partida", command=self.quitar).pack(anchor="w", pady=6)
-        self.total = ttk.Label(self, text="Sin partidas en el cálculo.")
+        self.total = ttk.Label(self, text="Sin partidas en el cálculo.", style="Total.TLabel")
         self.total.pack(anchor="w")
         ttk.Label(
             self, text="Costo directo preliminar de las partidas incluidas. "
