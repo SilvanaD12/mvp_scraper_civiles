@@ -202,6 +202,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
                 ("descripcion", "Descripción", 380),
                 ("unidad", "Unidad", 70),
                 ("precio", "Precio unitario", 130),
+                ("monto", "Monto general", 130),
                 ("moneda", "Moneda", 80),
                 ("fuente", "Fuente", 100),
                 ("obra", "Obra / referencia", 240),
@@ -211,6 +212,10 @@ class ProcesamientoPanel(ctk.CTkFrame):
             height=8,
         )
         frame.grid(row=4, column=0, sticky="nsew", pady=4)
+        self.estado_vacio = ctk.CTkLabel(
+            frame, text="", wraplength=600, fg_color="#17232F",
+            text_color="#E1EAF2",
+        )
 
         self.resultados.column(
             "elegir",
@@ -238,6 +243,12 @@ class ProcesamientoPanel(ctk.CTkFrame):
             pie, "Cancelar selección", self.cancelar
         )
         self.boton_cancelar.pack(side="left", padx=4)
+
+        self.boton_estimar = ctk.CTkButton(
+            pie, text="Enviar al estimador", command=self.enviar_estimador,
+            height=30,
+        )
+        self.boton_estimar.pack(side="left", padx=4)
 
         self.contador = ctk.CTkLabel(
             self, text="", anchor="w"
@@ -291,6 +302,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         if self.actual:
             self.tabla.selection_set(conservar)
+        elif conservar:
+            self.resumen.configure(text="Seleccione un documento.")
 
         self.actualizar_resultados()
 
@@ -304,11 +317,12 @@ class ProcesamientoPanel(ctk.CTkFrame):
             return
 
         self.ruta_pendiente = Path(ruta)
+        self.actual = None
+        self.tabla.selection_remove(*self.tabla.selection())
+        self.ambito.set("Documento seleccionado")
+        self.actualizar_resultados()
         self.resumen.configure(
             text=f"Listo para procesar: {self.ruta_pendiente.name}"
-        )
-        self.mensaje(
-            "Pulse Procesar para leer el PDF y obtener sus resultados."
         )
 
     def procesar(self):
@@ -331,6 +345,9 @@ class ProcesamientoPanel(ctk.CTkFrame):
                     nombre=fila["nombre"],
                     fuente=fila["fuente"],
                     obra_clave=fila.get("obra_clave"),
+                    contexto=fila.get("contexto"),
+                    archivo_origen=fila.get("archivo_origen"),
+                    miembro_archivo=fila.get("miembro_archivo"),
                 ),
                 self.completado,
             )
@@ -341,11 +358,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
     def procesar_descarga(self, payload):
         ruta = Path(payload["descarga"]["ruta_local"])
-        if ruta.suffix.lower() != ".pdf":
-            return self.app.notice(
-                "La descarga se conservó. "
-                "Descomprima el ZIP/RAR y cargue su PDF."
-            )
+        if ruta.suffix.lower() not in (".pdf", ".zip", ".rar"):
+            return self.app.notice("La descarga se conservó. Se admiten PDF, ZIP y RAR.")
 
         self.app.tabs.set("Procesar PDFs")
         self.app.run_task(
@@ -380,6 +394,14 @@ class ProcesamientoPanel(ctk.CTkFrame):
             self.seleccionar()
 
         self.app.tabs.set("Procesar PDFs")
+        if lote := resultado.get("lote"):
+            self.app.status.configure(text=(
+                f"{lote['archivo']} · {lote['documentos_procesados']} PDFs procesados · "
+                f"{lote['candidatos']} hallazgos."
+            ))
+            if lote["avisos"]:
+                self.app.notice("El archivo se procesó con avisos:\n" + "\n".join(lote["avisos"][:5]))
+            return
         self.app.status.configure(
             text=(
                 f"Procesado: {resultado['nombre']} · "
@@ -419,9 +441,10 @@ class ProcesamientoPanel(ctk.CTkFrame):
             self.consulta.cancelar()
             self.consulta.filas = {}
             self.resultados.delete(*self.resultados.get_children())
-            self.mensaje(
-                "Seleccione un documento o elija "
-                "Todos los documentos para consultar."
+            self.contar()
+            self.mostrar_vacio(
+                "Pulsa Procesar para leer el PDF cargado." if self.ruta_pendiente
+                else "Selecciona un documento para ver sus datos."
             )
             return
 
@@ -432,14 +455,17 @@ class ProcesamientoPanel(ctk.CTkFrame):
         ):
             doc = self.actual["documento_id"]
 
+        filtros = {
+            'termino': self.busqueda.get().strip(),
+            'obra': self.filtro_obra.get().strip(),
+            'anio': self.filtro_anio.get().strip(),
+            'lugar': self.filtro_lugar.get().strip(),
+        }
         try:
             filas = self.consulta.actualizar(
                 guardadas=self.vista.get() == "Datos guardados",
                 documento_id=doc,
-                termino=self.busqueda.get().strip(),
-                obra=self.filtro_obra.get().strip(),
-                anio=self.filtro_anio.get().strip(),
-                lugar=self.filtro_lugar.get().strip(),
+                **filtros,
             )
         except ValueError as error:
             self.mensaje(str(error))
@@ -449,6 +475,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
             return
 
         self.resultados.delete(*self.resultados.get_children())
+        self.estado_vacio.place_forget()
 
         for fila in filas:
             self.resultados.insert(
@@ -459,7 +486,8 @@ class ProcesamientoPanel(ctk.CTkFrame):
                     "Guardado" if self.consulta.guardadas else "☐",
                     fila["descripcion"],
                     fila.get("unidad") or "Sin extraer",
-                    fila.get("precio_unitario_texto") or "No encontrado",
+                    fila.get("precio_unitario_texto") or "",
+                    (fila.get("monto_texto") or "") if not fila.get("precio_unitario_texto") else "",
                     fila.get("moneda") or "Sin registrar",
                     fila.get("fuente") or "Sin registrar",
                     fila.get("obra")
@@ -472,15 +500,44 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         self.contar()
         if not filas:
-            self.mensaje(
-                "No hay resultados para esta vista y estos filtros. "
-                "Pruebe Limpiar o cambie la vista de resultados."
-            )
+            if doc and not self.actual["candidatos"]:
+                texto = "No se encontraron datos en este documento."
+            elif any(filtros.values()):
+                texto = "No hay resultados con estos filtros."
+            elif self.consulta.guardadas:
+                texto = "No hay datos guardados en esta vista."
+            elif doc:
+                texto = "No hay hallazgos pendientes. Consulta Datos guardados."
+            else:
+                texto = "No hay hallazgos pendientes."
+            self.mostrar_vacio(texto)
+
+    def mostrar_vacio(self, texto):
+        self.estado_vacio.configure(text=texto)
+        self.estado_vacio.place(relx=.5, rely=.5, anchor="center")
+        self.mensaje("")
+
+    def enviar_estimador(self):
+        if getattr(self.app, "busy", False):
+            return
+        seleccion = self.resultados.selection()
+        fila = self.consulta.filas.get(seleccion[0]) if seleccion else None
+        if self.vista.get() != "Datos guardados" or not fila:
+            self.app.notice("Selecciona una partida de Datos guardados.")
+            return
+        estimador = self.app.estimacion_partidas
+        if estimador.agregar(fila):
+            self.app.tabs.set("Estimador")
+            estimador.master.select(estimador)
 
     def contar(self):
+        self.boton_estimar.configure(
+            state="normal" if self.consulta.guardadas and self.consulta.filas else "disabled"
+        )
         deshabilitar = (
             self.consulta.guardadas
             or getattr(self.app, "busy", False)
+            or not self.consulta.filas
         )
         for boton in (
             self.boton_todos,
@@ -586,7 +643,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
         if fila:
             fuente = fila.get("fuente") or "Fuente no registrada"
             obra = fila.get("obra") or fila.get("obra_clave") or "Obra no registrada"
-            self.resumen.configure(text=f"{fuente} · {obra}")
+            self.resumen.configure(text=f"{fuente} · {obra} · Página {fila['pagina']}")
 
     def revisar(self):
         self.actualizar_resultados()

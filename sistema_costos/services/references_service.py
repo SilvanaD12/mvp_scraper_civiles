@@ -10,7 +10,7 @@ from uuid import uuid4
 from ..config.settings import Settings
 from ..database.obras_repository import ObrasRepository
 from ..database.references_repository import ReferencesRepository, procedure_identity
-from ..scrapers.buscador_infobras import BuscadorInfobras
+from ..scrapers.buscador_infobras import BuscadorInfobras, InfobrasNoDisponible
 from ..scrapers.infobras import InfobrasScraper
 from ..scrapers.seace import SeaceScraper
 from .descargador_documentos import DescargadorDocumentos
@@ -29,7 +29,16 @@ class ReferencesService:
         return payload
 
     def search_infobras(self, term: str, page: int = 1) -> dict:
-        total, rows = BuscadorInfobras().buscar(term, page)
+        term = term.strip()
+        try:
+            total, rows = BuscadorInfobras().buscar(term, page)
+        except InfobrasNoDisponible as error:
+            guardada = self.store.ultima_busqueda_infobras(term, page)
+            if guardada is None:
+                raise InfobrasNoDisponible(
+                    f'{error} Intente más tarde o reabra una consulta desde Guardados.'
+                ) from error
+            return {**guardada, 'desde_historial': True, 'aviso': str(error)}
         return self._save({'fuente': 'INFOBRAS', 'tipo': 'busqueda',
                           'asunto': term, 'termino': term, 'pagina': page,
                           'total': total, 'registros': rows,

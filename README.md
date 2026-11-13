@@ -1,5 +1,8 @@
 # CENITEG · Referencias de obras civiles
 
+Para el avance de extracción de tablas, montos generales y descargas ZIP/RAR,
+ver [Guía de extracción del avance 7](GUIA_EXTRACCION_AVANCE_7.md).
+
 ## Procesamiento de PDFs (29 de octubre de 2026)
 
 La pestaña **Procesar PDFs** permite cargar documentos internos o procesar las

@@ -11,6 +11,7 @@ from tkinter import messagebox, ttk, filedialog
 import customtkinter as ctk
 
 from ..services.references_service import ReferencesService
+from ..services.gestion_descargas import GestionDescargas
 from ..services.procesador_pdf import detectar_terminos
 
 PILOT = 'AS-SM-16-2023-OEC/PERPG-GRMOQ-1'
@@ -115,9 +116,6 @@ class PortalPanel(ctk.CTkFrame):
             except ValueError:
                 return self.app.notice('Ingrese un año válido desde 2000 hasta el año actual.')
             job = lambda: self.app.service.search_seace(term, year)
-        self.clear_detail()
-        self.search_data = None
-        replace_rows(self.results, [])
         self.app.run_task('Buscando en ' + self.source + '…', job, self.show_search)
 
     def clear_detail(self):
@@ -126,12 +124,14 @@ class PortalPanel(ctk.CTkFrame):
         set_text(self.info, 'Consulte una ficha para ver el detalle.')
 
     def show_search(self, data, saved=False):
+        saved = saved or data.get('desde_historial', False)
         self.search_data = data
         self.clear_detail()
         rows = data['registros']
         if self.source == 'INFOBRAS':
             values = [(r.get('Codigo'), r.get('NombreObra'), r.get('CUI')) for r in rows]
-            scope = f"{data['termino']} · Página {data['pagina']} · {len(rows)} resultados mostrados · {data['total']} coincidencias en el portal"
+            tipo_total = 'coincidencias registradas' if saved else 'coincidencias en el portal'
+            scope = f"{data['termino']} · Página {data['pagina']} · {len(rows)} resultados mostrados · {data['total']} {tipo_total}"
         else:
             values = [(r['nomenclatura'], r['descripcion'], r['entidad'], r['publicado_en']) for r in rows]
             scope = f"{data['termino']} / {data['anio']} · {len(rows)} resultados mostrados · Solo primera página · {data.get('paginacion') or ''}"
@@ -139,7 +139,8 @@ class PortalPanel(ctk.CTkFrame):
         self.scope.configure(text=('GUARDADO · ' if saved else 'Consulta realizada · ') + scope)
         if not rows:
             set_text(self.info, 'No se encontraron resultados en esta consulta. Cambie el término o el año.')
-        self.app.status.configure(text=f"{len(rows)} resultados. Consulta {'recuperada' if saved else 'guardada'} · {data['extraido_en']}")
+        aviso = f"{data['aviso']} " if data.get('desde_historial') else ''
+        self.app.status.configure(text=f"{aviso}{len(rows)} resultados. Consulta {'recuperada' if saved else 'guardada'} · {data['extraido_en']}")
 
     def page(self, delta):
         if not self.search_data:
@@ -249,7 +250,7 @@ class ReferencesApp(ctk.CTk):
         header.grid(row=0, column=0, sticky='ew', padx=22, pady=(16, 4))
         ctk.CTkLabel(header, text='CENITEG  /  Referencias civiles', font=ctk.CTkFont(size=25, weight='bold')).pack(side='left')
         self.button(header, 'Abrir carpeta de datos', lambda: self.open_path(settings.data_dir)).pack(side='right')
-        ctk.CTkLabel(self, text='Busque obras, consulte sus documentos y conserve la fuente. Estimación de costos: pendiente de metrados, APUs y validación civil.', text_color='#B5C7D8', anchor='w').grid(row=1, column=0, sticky='ew', padx=22, pady=4)
+        ctk.CTkLabel(self, text='Busque obras, consulte sus documentos y conserve la fuente. Estime costos preliminares a partir de precios revisados y metrados ingresados.', text_color='#B5C7D8', anchor='w').grid(row=1, column=0, sticky='ew', padx=22, pady=4)
         self.tabs = ctk.CTkTabview(self)
         self.tabs.grid(row=2, column=0, sticky='nsew', padx=18, pady=6)
         self.panels = {}
@@ -262,6 +263,12 @@ class ReferencesApp(ctk.CTk):
         from .procesamiento_panel import ProcesamientoPanel
         self.processing = ProcesamientoPanel(self.tabs.add('Procesar PDFs'), self)
         self.processing.pack(fill='both', expand=True, padx=5, pady=4)
+        from costeo_mvp.app import CosteoPanel
+        from .estimacion_partidas import EstimacionPartidas
+        costeo = CosteoPanel(self.tabs.add('Estimador'))
+        costeo.pack(fill='both', expand=True)
+        self.estimacion_partidas = EstimacionPartidas(costeo.tabs, self)
+        costeo.tabs.add(self.estimacion_partidas, text='Por partidas')
         footer = ctk.CTkFrame(self, fg_color='transparent')
         footer.grid(row=3, column=0, sticky='ew', padx=22, pady=(0, 14))
         footer.grid_columnconfigure(0, weight=1)
@@ -291,7 +298,8 @@ class ReferencesApp(ctk.CTk):
         bar.grid(row=2, column=0, sticky='ew', padx=8, pady=8)
         self.button(bar, 'Actualizar historial', self.refresh_history).pack(side='left', padx=4)
         self.button(bar, 'Reabrir selección', self.reopen).pack(side='left', padx=4)
-        self.button(bar, 'Procesar PDF guardado', self.process_saved).pack(side='left', padx=4)
+        self.button(bar, 'Procesar descarga', self.process_saved).pack(side='left', padx=4)
+        self.button(bar, 'Eliminar descarga', self.delete_saved_download).pack(side='left', padx=4)
         self.history_text = ctk.CTkTextbox(parent, wrap='word')
         self.history_text.grid(row=3, column=0, sticky='nsew', padx=8, pady=(0, 8))
         self.history.bind('<<TreeviewSelect>>', self.show_history_payload)
@@ -299,6 +307,7 @@ class ReferencesApp(ctk.CTk):
     def refresh_history(self):
         self.history_rows = self.service.store.recent()
         replace_rows(self.history, [(r['source'], r['kind'], r['subject'], r['created_at']) for r in self.history_rows])
+        set_text(self.history_text, 'Seleccione un registro.')
 
     def history_payload(self):
         selected = self.history.selection()
@@ -357,6 +366,33 @@ class ReferencesApp(ctk.CTk):
             self.processing.procesar_descarga(data)
         except (OSError, ValueError) as error:
             self.show_error(error)
+
+    def delete_saved_download(self):
+        try:
+            data = self.history_payload()
+            if data['tipo'] != 'descarga':
+                return self.notice('Selecciona una descarga del historial.')
+        except ValueError as error:
+            return self.notice(str(error))
+        info = data['descarga']
+        if not messagebox.askyesno(
+            'Eliminar descarga',
+            f"¿Eliminar «{info['documento']}» de este equipo?\n\n"
+            'También se eliminarán sus hallazgos y datos guardados asociados.',
+            parent=self,
+        ):
+            return
+        self.run_task('Eliminando descarga…',
+                      lambda: GestionDescargas(self.settings).eliminar(info['ruta_local']),
+                      self.download_deleted)
+
+    def download_deleted(self, resultado):
+        if self.last_download and not self.last_download.is_file():
+            self.last_download = None
+        self.processing.actualizar()
+        self.status.configure(text='Descarga eliminada y lista actualizada.')
+        if resultado.avisos:
+            self.notice('\n'.join(resultado.avisos))
 
     def run_task(self, label, job, complete):
         if self.busy:

@@ -93,3 +93,15 @@ class ReferencesRepository:
         if row is None:
             raise ValueError('La consulta guardada ya no existe.')
         return json.loads(row['payload_json'])
+
+    def ultima_busqueda_infobras(self, termino: str, pagina: int) -> dict | None:
+        with DatabaseConnection(self.path) as db:
+            row = db.fetch_one(
+                """SELECT payload_json FROM reference_events
+                   WHERE source='INFOBRAS' AND kind='busqueda'
+                     AND subject = ? COLLATE NOCASE
+                     AND json_extract(payload_json, '$.pagina') = ?
+                   ORDER BY id DESC LIMIT 1""",
+                (termino.strip(), pagina),
+            )
+        return json.loads(row['payload_json']) if row else None
