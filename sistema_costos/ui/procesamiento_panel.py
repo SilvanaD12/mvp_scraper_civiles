@@ -4,6 +4,7 @@ from pathlib import Path
 from tkinter import filedialog
 
 import customtkinter as ctk
+import webbrowser
 
 from ..database.candidatos_repository import CandidatosRepository
 from ..database.partidas_seleccionadas_repository import (
@@ -265,6 +266,46 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         self.ayuda_acciones = ctk.CTkLabel(self, text="", text_color=SECUNDARIO, anchor="w")
         self.ayuda_acciones.grid(row=7, column=0, sticky="ew", padx=5)
+
+        self.detalle_frame = ctk.CTkFrame(
+            self, fg_color=PANEL, border_color=BORDE, border_width=1,
+        )
+        self.detalle_frame.grid(
+            row=8, column=0, sticky="ew", padx=4, pady=(6, 4),
+        )
+        self.detalle_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            self.detalle_frame,
+            text="Detalle de la partida",
+            text_color=TEXTO,
+            anchor="w",
+            font=ctk.CTkFont(weight="bold"),
+        ).grid(row=0, column=0, sticky="ew", padx=12, pady=(8, 4))
+
+        self.boton_abrir_pdf = app.button(
+            self.detalle_frame,
+            "Abrir PDF",
+            self.abrir_pdf_resultado,
+            registrar=False,
+        )
+        self.boton_abrir_pdf.grid(
+            row=0, column=1, padx=12, pady=(8, 4),
+        )
+
+        self.detalle_texto = ctk.CTkTextbox(
+            self.detalle_frame,
+            height=120,
+            wrap="word",
+            fg_color=PANEL,
+            text_color=TEXTO,
+        )
+        self.detalle_texto.grid(
+            row=1, column=0, columnspan=2,
+            sticky="ew", padx=8, pady=(0, 8),
+        )
+        self.detalle_texto.configure(state="disabled")
+        self.detalle_frame.grid_remove()
 
         self.actualizar()
 
@@ -579,6 +620,7 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         self.boton_estimar.configure(state=estado(puede_estimar))
         self.ayuda_acciones.configure(text=ayuda)
+        self.actualizar_detalle()
 
     def contar(self):
         self.actualizar_acciones()
@@ -670,6 +712,64 @@ class ProcesamientoPanel(ctk.CTkFrame):
     def limpiar_busqueda(self):
         self.vaciar_filtros()
         self.actualizar_resultados()
+
+    def actualizar_detalle(self):
+        seleccion = self.resultados.selection()
+        fila = self.consulta.filas.get(seleccion[0]) if seleccion else None
+
+        if not self.consulta.guardadas:
+            self.detalle_frame.grid_remove()
+            self.boton_abrir_pdf.configure(state="disabled")
+            return
+
+        self.detalle_frame.grid()
+        texto = "Selecciona una partida para consultar sus datos y su documento."
+
+        if fila:
+            descripcion = fila.get("descripcion") or "Sin descripción"
+            unidad = fila.get("unidad") or "Sin registrar"
+            precio = fila.get("precio_unitario_texto") or "Sin extraer"
+            moneda = fila.get("moneda") or "Sin registrar"
+            documento = fila.get("documento_nombre") or "Sin registrar"
+            pagina = fila.get("pagina") or "Sin registrar"
+            fuente = fila.get("fuente") or "Sin registrar"
+
+            texto = (
+                f"{descripcion}\n\n"
+                f"Precio unitario: {precio}    Moneda: {moneda}    Unidad: {unidad}\n"
+                f"Documento: {documento}\n"
+                f"Página de referencia: {pagina}    Fuente: {fuente}"
+            )
+
+        self.detalle_texto.configure(state="normal")
+        self.detalle_texto.delete("1.0", "end")
+        self.detalle_texto.insert("1.0", texto)
+        self.detalle_texto.configure(state="disabled")
+
+        disponible = bool(fila) and not self.app.busy
+        self.boton_abrir_pdf.configure(
+            state="normal" if disponible else "disabled",
+        )
+
+    def abrir_pdf_resultado(self):
+        if self.app.busy:
+            return
+
+        seleccion = self.resultados.selection()
+        fila = self.consulta.filas.get(seleccion[0]) if seleccion else None
+        if not self.consulta.guardadas or not fila:
+            self.app.notice("Selecciona una partida de Datos guardados.")
+            return
+
+        try:
+            ruta = self.revision.obtener_ruta_pdf(fila["id"])
+            abierto = webbrowser.open(ruta.as_uri())
+            if not abierto:
+                self.app.notice(
+                    "No se pudo abrir el PDF. Comprueba tu navegador predeterminado."
+                )
+        except (ValueError, FileNotFoundError, OSError) as error:
+            self.app.notice(str(error))
 
     def resumir_resultado(self, _evento=None):
         self.actualizar_acciones()
