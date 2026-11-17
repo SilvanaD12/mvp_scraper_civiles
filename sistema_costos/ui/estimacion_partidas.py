@@ -1,12 +1,11 @@
 """Vista de estimación preliminar por partidas seleccionadas."""
 
 import webbrowser
-from tkinter import simpledialog, ttk
+from tkinter import ttk
 
 import customtkinter as ctk
 
 from costeo_mvp.partidas import (
-    calcular_partida,
     precio_partida,
     subtotales_por_moneda,
 )
@@ -16,6 +15,7 @@ from sistema_costos.database.partidas_seleccionadas_repository import (
 )
 from sistema_costos.services.revision_candidatos import RevisionCandidatosService
 
+from .dialogo_metrado import DialogoMetrado
 from .tema import PANEL, TEXTO
 
 
@@ -130,28 +130,20 @@ class EstimacionPartidas(ttk.Frame):
             return False
 
         anterior = self.partidas.get(fila["id"])
-        metrado = simpledialog.askstring(
-            "Revisar precio e ingresar metrado",
-            f"{fila['descripcion']}\n"
-            f"{fila['documento_nombre']} · página {fila['pagina']} · "
-            f"{fila['fuente']}\n"
-            f"Precio de referencia: {fila['moneda']} {precio} "
-            f"por {fila['unidad']}\n\n"
-            "Si ya cotejaste el precio y la unidad en el documento, "
-            f"ingresa el metrado del proyecto en {fila['unidad']}.",
-            initialvalue=str(anterior["metrado"]) if anterior else "",
-            parent=self.app,
+        metrado_inicial = str(anterior["metrado"]) if anterior else ""
+
+        dialogo = DialogoMetrado(
+            self.app,
+            fila,
+            precio,
+            metrado_inicial=metrado_inicial,
         )
-        if metrado is None:
+        self.app.wait_window(dialogo)
+
+        if dialogo.partida is None:
             return False
 
-        try:
-            partida = calcular_partida(fila, metrado)
-        except ValueError as error:
-            self.app.notice(str(error))
-            return False
-
-        self.partidas[fila["id"]] = partida
+        self.partidas[fila["id"]] = dialogo.partida
         self.actualizar()
         self.tabla.selection_set(fila["id"])
         self.tabla.see(fila["id"])
