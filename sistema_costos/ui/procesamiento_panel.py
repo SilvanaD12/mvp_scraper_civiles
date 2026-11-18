@@ -152,34 +152,55 @@ class ProcesamientoPanel(ctk.CTkFrame):
             bloque_filtros, fg_color="transparent"
         )
         contexto.pack(fill="x", pady=3)
+        contexto.grid_columnconfigure(0, weight=1)
+        contexto.grid_columnconfigure(2, weight=1)
 
-        ctk.CTkLabel(contexto, text="Filtrar por:").pack(
-            side="left", padx=4
-        )
+        ctk.CTkLabel(
+            contexto,
+            text="Obra",
+            text_color=TEXTO,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=4)
 
         self.filtro_obra = ctk.CTkEntry(
             contexto,
             width=240,
-            placeholder_text="Obra",
+            placeholder_text="Todas las obras",
         )
-        self.filtro_obra.pack(
-            side="left", padx=4, fill="x", expand=True
+        self.filtro_obra.grid(
+            row=1, column=0, sticky="ew", padx=4,
         )
+
+        ctk.CTkLabel(
+            contexto,
+            text="Año",
+            text_color=TEXTO,
+            anchor="w",
+        ).grid(row=0, column=1, sticky="w", padx=4)
 
         self.filtro_anio = ctk.CTkEntry(
             contexto,
             width=100,
-            placeholder_text="Año",
+            placeholder_text="AAAA",
         )
-        self.filtro_anio.pack(side="left", padx=4)
+        self.filtro_anio.grid(
+            row=1, column=1, sticky="ew", padx=4,
+        )
+
+        ctk.CTkLabel(
+            contexto,
+            text="Lugar",
+            text_color=TEXTO,
+            anchor="w",
+        ).grid(row=0, column=2, sticky="w", padx=4)
 
         self.filtro_lugar = ctk.CTkEntry(
             contexto,
             width=220,
-            placeholder_text="Lugar",
+            placeholder_text="Todos los lugares",
         )
-        self.filtro_lugar.pack(
-            side="left", padx=4, fill="x", expand=True
+        self.filtro_lugar.grid(
+            row=1, column=2, sticky="ew", padx=4,
         )
 
         for entrada in (
