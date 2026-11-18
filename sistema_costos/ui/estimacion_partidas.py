@@ -204,11 +204,12 @@ class EstimacionPartidas(ttk.Frame):
             "Selecciona una partida de la estimación "
             "para consultar su fuente."
         )
+        referencia = self.revision.describir_fuente(fila) if fila else None
 
-        if fila:
+        if fila and referencia:
             descripcion = fila.get("descripcion") or "Sin descripción"
-            documento = fila.get("documento_nombre") or "Sin registrar"
-            pagina = fila.get("pagina") or "Sin registrar"
+            documento = referencia.documento or "Sin registrar"
+            pagina = referencia.pagina or "Sin registrar"
             fuente = fila.get("fuente") or "Sin registrar"
 
             texto = (
@@ -219,13 +220,15 @@ class EstimacionPartidas(ttk.Frame):
                 f"Documento: {documento}\n"
                 f"Página de referencia: {pagina}    Fuente: {fuente}"
             )
+            if referencia.aviso:
+                texto += f"\n{referencia.aviso}"
 
         self.detalle_texto.configure(state="normal")
         self.detalle_texto.delete("1.0", "end")
         self.detalle_texto.insert("1.0", texto)
         self.detalle_texto.configure(state="disabled")
         self.boton_abrir_pdf.configure(
-            state="normal" if fila else "disabled",
+            state="normal" if referencia and referencia.disponible else "disabled",
         )
 
     def abrir_pdf_resultado(self):

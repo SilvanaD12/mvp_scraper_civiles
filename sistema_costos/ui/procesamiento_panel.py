@@ -745,14 +745,15 @@ class ProcesamientoPanel(ctk.CTkFrame):
 
         self.detalle_frame.grid()
         texto = "Selecciona una partida para consultar sus datos y su documento."
+        referencia = self.revision.describir_fuente(fila) if fila else None
 
-        if fila:
+        if fila and referencia:
             descripcion = fila.get("descripcion") or "Sin descripción"
             unidad = fila.get("unidad") or "Sin registrar"
             precio = fila.get("precio_unitario_texto") or "Sin extraer"
             moneda = fila.get("moneda") or "Sin registrar"
-            documento = fila.get("documento_nombre") or "Sin registrar"
-            pagina = fila.get("pagina") or "Sin registrar"
+            documento = referencia.documento or "Sin registrar"
+            pagina = referencia.pagina or "Sin registrar"
             fuente = fila.get("fuente") or "Sin registrar"
 
             texto = (
@@ -761,13 +762,15 @@ class ProcesamientoPanel(ctk.CTkFrame):
                 f"Documento: {documento}\n"
                 f"Página de referencia: {pagina}    Fuente: {fuente}"
             )
+            if referencia.aviso:
+                texto += f"\n{referencia.aviso}"
 
         self.detalle_texto.configure(state="normal")
         self.detalle_texto.delete("1.0", "end")
         self.detalle_texto.insert("1.0", texto)
         self.detalle_texto.configure(state="disabled")
 
-        disponible = bool(fila) and not self.app.busy
+        disponible = referencia is not None and referencia.disponible and not self.app.busy
         self.boton_abrir_pdf.configure(
             state="normal" if disponible else "disabled",
         )

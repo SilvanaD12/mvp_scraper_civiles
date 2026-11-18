@@ -1,6 +1,7 @@
 """Consulta de hallazgos e incorporación de los datos seleccionados."""
 
 from pathlib import Path
+from dataclasses import dataclass
 
 from sistema_costos.database.candidatos_repository import (
     CandidatosRepository,
@@ -8,6 +9,19 @@ from sistema_costos.database.candidatos_repository import (
 from sistema_costos.database.partidas_seleccionadas_repository import (
     PartidasSeleccionadasRepository,
 )
+
+
+@dataclass(frozen=True)
+class FuentePartida:
+    documento: str | None
+    pagina: int | None
+    ruta_local: Path | None
+    estado: str
+    aviso: str = ""
+
+    @property
+    def disponible(self) -> bool:
+        return self.estado == "disponible"
 
 
 class RevisionCandidatosService:
@@ -41,24 +55,30 @@ class RevisionCandidatosService:
         self,
         candidato_id: str,
     ) -> Path:
-        candidato = self.obtener(candidato_id)
-        ruta_texto = candidato["ruta_local"]
+        fuente = self.describir_fuente(self.obtener(candidato_id))
+        if fuente.disponible and fuente.ruta_local is not None:
+            return fuente.ruta_local
+        if fuente.estado == "no_disponible":
+            raise FileNotFoundError(fuente.aviso)
+        raise ValueError(fuente.aviso)
 
-        if not ruta_texto or not ruta_texto.strip():
-            raise ValueError(
-                "El documento no tiene una ruta local registrada."
-            )
-
-        ruta = Path(ruta_texto).expanduser()
-
+    @staticmethod
+    def describir_fuente(fila: dict) -> FuentePartida:
+        documento, pagina = fila.get("documento_nombre"), fila.get("pagina")
+        texto = (fila.get("ruta_local") or "").strip()
+        if not texto:
+            return FuentePartida(documento, pagina, None, "sin_ruta",
+                                 "El documento no tiene una ruta local registrada.")
+        ruta = Path(texto)
         if ruta.suffix.lower() != ".pdf":
-            raise ValueError(
-                "El documento registrado no es un archivo PDF."
-            )
-
-        if not ruta.is_file():
-            raise FileNotFoundError(
-                f"No se encontró el PDF en la ruta registrada: {ruta}"
-            )
-
-        return ruta.resolve()
+            return FuentePartida(documento, pagina, ruta, "no_es_pdf",
+                                 "El documento registrado no es un archivo PDF.")
+        try:
+            ruta = ruta.expanduser()
+            if ruta.is_file():
+                return FuentePartida(documento, pagina, ruta.resolve(), "disponible")
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return FuentePartida(documento, pagina, ruta, "no_disponible",
+                             "El PDF ya no está disponible en la ruta registrada. "
+                             "Vuelve a descargarlo o cárgalo nuevamente.")
