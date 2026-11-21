@@ -39,11 +39,40 @@ Ver `PRESENTACION_MVP.md` para el recorrido y los resultados comprobados.
 
 ## Preparar otro equipo Windows
 
-Python 3.10 o superior. Desde la raíz del repositorio:
+1. Descargar el proyecto completo y extraer el ZIP a una carpeta local con
+   permiso de escritura. No ejecutar los archivos desde dentro del ZIP.
+2. Tener instalado Python 3.10 o superior para Windows, con pip y Tcl/Tk.
+3. Con conexión a Internet, ejecutar **`PREPARAR_MVP.cmd`** con doble clic.
+   Crea `.venv`, instala los paquetes de `requirements-ocr.txt` (que incluye
+   `requirements-mvp.txt`), descarga Chromium y comprueba los componentes.
+4. Revisar el resultado. Luego abrir **`INICIAR_MVP.cmd`**.
+
+El archivo de preparación no instala Python ni Tesseract en Windows. Si falta
+Tesseract o sus idiomas, muestra un aviso; las búsquedas y los PDFs digitales
+siguen disponibles si las comprobaciones del entorno base finalizaron bien.
+Para activar el OCR, instalar Tesseract con español (`spa`) y/o inglés (`eng`)
+siguiendo su [documentación de instalación](https://tesseract-ocr.github.io/tessdoc/Installation.html).
+La app busca Tesseract en PATH y en las ubicaciones habituales de Windows.
+Para otra ubicación, definir `TESSERACT_CMD` con la ruta al ejecutable.
+La lectura de RAR necesita `tar` con soporte RAR (`bsdtar`); ZIP no necesita
+un programa externo.
+
+Para repetir solo el diagnóstico, sin instalar ni descargar paquetes:
+
+```powershell
+.\PREPARAR_MVP.cmd --verificar
+```
+
+El diagnóstico comprueba las importaciones, las dependencias de Python, el
+inicio de Chromium con una página local y una ejecución de OCR en una página
+de prueba. No consulta los portales ni modifica los documentos o la base de
+datos. La conexión y disponibilidad de INFOBRAS/SEACE se prueban desde la app.
+
+Preparación manual equivalente, desde la raíz del repositorio:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-mvp.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-ocr.txt
 $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) '.browsers'
 .\.venv\Scripts\python.exe -m playwright install chromium
 .\INICIAR_MVP.cmd
@@ -89,8 +118,11 @@ no se deduce un precio por m² del monto global del servicio.
 - `tests/`: versiones, errores y selección de documentos.
 
 Los módulos anteriores de Sodimac, ETL y exportación se conservan.
-`requirements.txt` incluye sus dependencias. La nueva interfaz usa
-`requirements-mvp.txt`, que requiere menos paquetes.
+`requirements.txt` incluye sus dependencias y las del MVP con OCR.
+`requirements-mvp.txt` contiene los paquetes mínimos sin OCR;
+`requirements-ocr.txt` incluye esos mínimos y los paquetes Python del OCR.
+La instalación de paquetes usa el [formato de requisitos de pip](https://pip.pypa.io/en/stable/user_guide/#requirements-files).
+Chromium se prepara por separado con el [instalador de navegadores de Playwright](https://playwright.dev/python/docs/browsers).
 
 ## Siguiente entrega
 
