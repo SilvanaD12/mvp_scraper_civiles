@@ -31,6 +31,14 @@ consultar documentos y guardar evidencia para el análisis de costos.
 **Los montos mostrados son datos de las fuentes; aún no se calculan presupuestos.**
 El alcance del piloto requiere metrados, APUs y validación civil.
 
+Al consultar SEACE, la aplicación comprueba que sus scripts y controles estén
+listos y que la respuesta corresponda a la búsqueda enviada. Una respuesta
+HTTP 403 indica que el portal rechazó una solicitud o recurso; HTTP 429 indica
+un límite de consultas. En esos casos muestra el motivo y no guarda una búsqueda
+vacía como si fuera un resultado nuevo. La app no omite las validaciones del
+portal; se debe comprobar el acceso en el navegador y volver a intentar cuando
+esté disponible. Las consultas almacenadas siguen accesibles desde Guardados.
+
 ## Abrir en este equipo
 
 Doble clic en `INICIAR_MVP.cmd` desde el Explorador. El entorno y el navegador

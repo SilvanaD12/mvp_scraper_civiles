@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+from time import monotonic
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, parse_qs, urlencode
+from xml.etree import ElementTree
 
 
 def public_download_url(url: str) -> str:
@@ -16,6 +18,10 @@ from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
     sync_playwright,
 )
+
+
+class SeacePortalError(RuntimeError):
+    """El portal no permitió completar una consulta verificable."""
 
 
 class SeaceScraper:
@@ -70,21 +76,28 @@ class SeaceScraper:
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=self.headless)
+            fallos = []
+            etapa = 'crear la página del buscador'
 
             try:
                 page = browser.new_page(accept_downloads=True)
                 page.set_default_timeout(30_000)
+                page.on('response', lambda respuesta: self._registrar_fallo(respuesta, fallos))
+                etapa = 'cargar el portal'
 
                 page.goto(
                     self.URL,
                     wait_until="domcontentloaded",
                 )
+                self._esperar_preparacion(page, fallos)
 
+                etapa = 'preparar el buscador'
                 page.get_by_role(
                     "link",
                     name="Buscador de Procedimientos de Selección",
                     exact=True,
                 ).click()
+                self._esperar_preparacion(page, fallos, formulario=True)
 
                 page.locator(
                     f'[id="{self.FORM}:descripcionObjeto"]'
@@ -95,22 +108,8 @@ class SeaceScraper:
                     f'[id="{self.FORM}:anioConvocatoria_input"]'
                 ).select_option(str(anio), force=True)
 
-                cuerpo = page.locator(
-                    f'[id="{self.TABLA}_data"]'
-                )
-                cuerpo.wait_for(state="visible")
-                anterior = cuerpo.element_handle()
-
-                page.locator(
-                    f'[id="{self.FORM}:btnBuscarSelToken"]'
-                ).click()
-
-                # Espera a que la consulta reemplace la tabla anterior.
-                page.wait_for_function(
-                    "(anterior) => !anterior.isConnected",
-                    arg=anterior,
-                    timeout=60_000,
-                )
+                etapa = 'ejecutar la búsqueda'
+                self._consultar_tabla(page, fallos)
 
                 tabla = page.locator(
                     f'[id="{self.TABLA}"]'
@@ -118,6 +117,7 @@ class SeaceScraper:
                 tabla.wait_for(state="visible")
 
                 if nomenclatura is not None:
+                    etapa = 'abrir la ficha seleccionada'
                     resultado = {
                         "termino": termino,
                         "anio": anio,
@@ -126,6 +126,7 @@ class SeaceScraper:
                     }
 
                     if numero_documento is not None:
+                        etapa = 'descargar el documento seleccionado'
                         resultado["descarga"] = (
                             self._descargar_documento(
                                 page=page,
@@ -147,16 +148,109 @@ class SeaceScraper:
                 }
 
             except PlaywrightTimeoutError as error:
-                raise RuntimeError(
-                    "SEACE no completó el flujo esperado. "
-                    "Debemos revisar la carga, los controles, "
-                    "una posible verificación del portal "
-                    "o si la descarga se abrió en otra ventana. "
-                    f"Detalle: {error}"
+                self._comprobar_fallos(fallos)
+                raise SeacePortalError(
+                    f'SEACE agotó el tiempo al {etapa}. '
+                    'No se confirmó una respuesta válida del portal. '
+                    'Intente nuevamente o compruebe la consulta en el navegador.'
                 ) from error
 
             finally:
                 browser.close()
+
+    @classmethod
+    def _registrar_fallo(cls, respuesta, fallos):
+        # No registra cookies, tokens, consultas ni identificadores de sesión.
+        if (urlsplit(respuesta.url).hostname == urlsplit(cls.URL).hostname
+                and respuesta.request.resource_type in ('document', 'script', 'xhr', 'fetch')
+                and respuesta.status >= 400):
+            fallos.append(respuesta.status)
+
+    @staticmethod
+    def _comprobar_fallos(fallos):
+        if not fallos:
+            return
+        codigo = next((valor for valor in fallos if valor in (401, 403, 429)), fallos[0])
+        if codigo in (401, 403):
+            mensaje = 'SEACE rechazó el acceso a una solicitud o recurso del buscador'
+        elif codigo == 429:
+            mensaje = 'SEACE limitó la frecuencia de consultas; espere antes de volver a intentar'
+        else:
+            mensaje = 'SEACE no pudo cargar una solicitud o recurso necesario del buscador'
+        raise SeacePortalError(
+            f'{mensaje} (HTTP {codigo}). No se obtuvieron resultados nuevos. '
+            'Compruebe el acceso al portal en el navegador y vuelva a intentar.'
+        )
+
+    @classmethod
+    def _esperar_preparacion(cls, page, fallos, *, formulario=False, timeout_ms=30_000):
+        limite = monotonic() + timeout_ms / 1000
+        while True:
+            cls._comprobar_fallos(fallos)
+            listo = page.evaluate('''() =>
+                typeof window.cargaTokenBuscadorProSel === 'function' &&
+                typeof window.grecaptcha?.execute === 'function' &&
+                typeof window.PrimeFaces?.ajax?.Queue?.isEmpty === 'function' &&
+                window.PrimeFaces.ajax.Queue.isEmpty()
+            ''')
+            if listo and (not formulario or page.locator(
+                    f'[id="{cls.FORM}:descripcionObjeto"]').is_visible()):
+                return
+            if monotonic() >= limite:
+                raise SeacePortalError(
+                    'SEACE cargó el buscador de forma incompleta: no están listos '
+                    'sus controles, scripts o validación. No se envió la búsqueda. '
+                    'Compruebe el portal en el navegador y vuelva a intentar.'
+                )
+            page.wait_for_timeout(200)
+
+    @classmethod
+    def _es_respuesta_busqueda(cls, respuesta):
+        origen = urlsplit(respuesta.url)
+        buscador = urlsplit(cls.URL)
+        if (origen.hostname != buscador.hostname
+                or origen.path.split(';')[0] != buscador.path):
+            return False
+        # La validación del portal también genera solicitudes binarias a otros
+        # servicios. No se deben decodificar ni confundir con el formulario JSF.
+        try:
+            datos = parse_qs(respuesta.request.post_data or '')
+        except UnicodeError:
+            return False
+        return datos.get('javax.faces.source') == [f'{cls.FORM}:btnBuscarSel']
+
+    @classmethod
+    def _validar_respuesta_busqueda(cls, texto):
+        try:
+            raiz = ElementTree.fromstring(texto)
+        except ElementTree.ParseError as error:
+            raise SeacePortalError('SEACE devolvió una respuesta distinta de la búsqueda esperada.') from error
+        if raiz.tag != 'partial-response' or raiz.find('.//error') is not None:
+            raise SeacePortalError('SEACE devolvió un error al ejecutar la búsqueda.')
+        if raiz.find('.//redirect') is not None:
+            raise SeacePortalError('SEACE solicitó recargar la sesión. Vuelva a realizar la búsqueda.')
+        resultados = {f'{cls.FORM}:pnlGrdResultadosProcesos', cls.TABLA,
+                      f'{cls.TABLA}_data', cls.FORM, 'tbBuscador'}
+        if not any(elemento.get('id') in resultados for elemento in raiz.findall('.//update')):
+            raise SeacePortalError(
+                'SEACE respondió, pero no actualizó los resultados de la búsqueda. '
+                'La consulta no se guardó; compruebe el portal en el navegador.'
+            )
+
+    @classmethod
+    def _consultar_tabla(cls, page, fallos):
+        # El botón visible ejecuta la validación normal del portal. Se espera la
+        # respuesta de ESA búsqueda, no la desaparición de un elemento del DOM.
+        cls._comprobar_fallos(fallos)
+        with page.expect_response(cls._es_respuesta_busqueda, timeout=45_000) as evento:
+            page.locator(f'[id="{cls.FORM}:btnBuscarSelToken"]').click()
+        respuesta = evento.value
+        cls._comprobar_fallos(fallos)
+        if respuesta.status != 200:
+            cls._comprobar_fallos([respuesta.status])
+        cls._validar_respuesta_busqueda(respuesta.text())
+        # PrimeFaces termina de aplicar la respuesta después de recibirla.
+        cls._esperar_preparacion(page, fallos, formulario=True)
 
     def _leer_ficha(
         self,
